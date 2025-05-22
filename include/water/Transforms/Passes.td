@@ -24,7 +24,13 @@ def WaterAssertInBoundsPass : Pass<"water-assert-in-bounds"> {
       "Include vector.load/store operations despite them allowing "
       "out-of-bounds">,
     Option<"checkEachDim", "check-each-dim", "bool", /*default=*/"true",
-      "Check each dimension individually">
+      "Check each dimension individually">,
+    // TODO: consider making this a separate pass as it has to operate at
+    // module level.
+    Option<"createSpeculativeFuncs", "create-speculative-funcs", "bool",
+      /*default=*/"false",
+      "Create a function that performs assertions speculatively instead of "
+      "in-place checks">
   ];
 }
 

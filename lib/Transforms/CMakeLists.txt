@@ -11,8 +11,10 @@ add_mlir_dialect_library(MLIRWaterTransforms
   LINK_LIBS PUBLIC
   MLIRArithDialect
   MLIRControlFlowDialect
+  MLIRFuncDialect
   MLIRIR
   MLIRMemRefDialect
   MLIRPass
+  MLIRSCFDialect
   MLIRVectorDialect
 )

@@ -1,8 +1,19 @@
-// RUN: water-opt %s --water-assert-in-bounds --split-input-file | FileCheck %s --check-prefixes=CHECK,PERDIM
-// RUN: water-opt %s --water-assert-in-bounds='check-each-dim=false' --split-input-file | FileCheck %s --check-prefixes=CHECK,COMPOUND
-// RUN: water-opt %s --water-assert-in-bounds='include-vector-load-store=true' --split-input-file | FileCheck %s --check-prefixes=CHECK,VECTOR
+// RUN: water-opt %s --water-assert-in-bounds --split-input-file | FileCheck %s --check-prefixes=CHECK,PERDIM,INPLC,PERDIM-INPLC
+// RUN: water-opt %s --water-assert-in-bounds='check-each-dim=false' --split-input-file | FileCheck %s --check-prefixes=CHECK,COMPOUND,INPLC
+// RUN: water-opt %s --water-assert-in-bounds='include-vector-load-store=true' --split-input-file | FileCheck %s --check-prefixes=CHECK,VECTOR,INPLC
+// RUN: water-opt %s --water-assert-in-bounds='create-speculative-funcs=true' --split-input-file --verify-diagnostics | FileCheck %s --check-prefixes=CHECK,SPEC,PERDIM
 
-// CHECK-LABEL: @all_static
+// Prefix key:
+//   CHECK - for all cases
+//   INPLC - in-place assertions only
+//   PERDIM - only per-dimension checks
+//   COMPOUND - compound checks across all dimensions
+//   SPEC - speculative functions only
+//   PERDIM-INPLC - in-place per-dimension checks only (speculative will fail)
+
+
+// INPLC-LABEL: @all_static
+// SPEC-LABEL: @__speculative_in_bounds_check_all_static
 func.func @all_static(%memref: memref<2x2xf32>) -> f32 {
   %0 = arith.constant 0 : index
   %1 = arith.constant 1 : index
@@ -13,14 +24,19 @@ func.func @all_static(%memref: memref<2x2xf32>) -> f32 {
   //
   // COMPOUND:       %[[TRUE:.+]] = arith.constant true
   // COMPOUND:       cf.assert %[[TRUE]], "memref access out of bounds"
-  // CHECK:          memref.load
+  // INPLC:          memref.load
+  // SPEC-NOT:       memref.load
   %2 = memref.load %memref[%0, %1] : memref<2x2xf32>
   return %2 : f32
 }
+// SPEC:       @all_static
+// SPEC:       call @__speculative_in_bounds_check_all_static
+// SPEC:       memref.load
 
 // -----
 
-// CHECK-LABEL: @shape_static_one_index_dynamic
+// INPLC-LABEL: @shape_static_one_index_dynamic
+// SPEC-LABEL:  @__speculative_in_bounds_check_shape_static_one_index_dynamic
 // CHECK-SAME: (%[[ARG0:.+]]: memref<5x2xf32>, %[[ARG1:.+]]: index)
 func.func @shape_static_one_index_dynamic(%memref: memref<5x2xf32>, %i: index) -> f32 {
   // CHECK:          arith.constant 0
@@ -37,14 +53,19 @@ func.func @shape_static_one_index_dynamic(%memref: memref<5x2xf32>, %i: index) -
   //
   // COMPOUND:       %[[COMPOUND:.+]] = arith.andi %[[BOUND]], %[[TRUE]]
   // COMPOUND:       cf.assert %[[COMPOUND]], "memref access out of bounds"
-  // CHECK:          memref.load
+  // INPLC:          memref.load
+  // SPEC-NOT:       memref.load
   %1 = memref.load %memref[%0, %i] : memref<5x2xf32>
   return %1 : f32
 }
+// SPEC:      @shape_static_one_index_dynamic
+// SPEC:      call @__speculative_in_bounds_check_shape_static_one_index_dynamic
+// SPEC:      memref.load
 
 // -----
 
-// CHECK-LABEL: @shape_dynamic
+// INPLC-LABEL: @shape_dynamic
+// SPEC-LABEL:  @__speculative_in_bounds_check_shape_dynamic
 func.func @shape_dynamic(%memref: memref<?x?xf32>) -> f32 {
   // CHECK:          %[[INDEX0:.+]] = arith.constant 0
   // CHECK:          %[[INDEX1:.+]] = arith.constant 1
@@ -69,14 +90,20 @@ func.func @shape_dynamic(%memref: memref<?x?xf32>) -> f32 {
   // COMPOUND:       %[[COMPOUND:.+]] = arith.andi %[[BOUND0]], %[[BOUND1]]
   // COMPOUND:       cf.assert %[[COMPOUND]], "memref access out of bounds"
   //
-  // CHECK:          memref.load
+  // INPLC:          memref.load
+  // SPEC-NOT:       memref.load
   %2 = memref.load %memref[%0, %1] : memref<?x?xf32>
   return %2 : f32
 }
+// SPEC:      @shape_dynamic
+// SPEC:      call @__speculative_in_bounds_check_shape_dynamic
+// SPEC:      memref.load
+
 
 // -----
 
-// CHECK-LABEL: @out_of_bounds
+// INPLC-LABEL: @out_of_bounds
+// SPEC-LABEL:  @__speculative_in_bounds_check_out_of_bounds
 func.func @out_of_bounds(%memref: memref<2x2xf32>) -> f32 {
   %0 = arith.constant 0 : index
   %1 = arith.constant 2 : index
@@ -88,23 +115,33 @@ func.func @out_of_bounds(%memref: memref<2x2xf32>) -> f32 {
   // CHECK:          %[[FALSE:.+]] = arith.constant false
   // PERDIM:         cf.assert %[[FALSE]], "memref access out of bounds along dimension 1"
   // COMPOUND:       cf.assert %[[FALSE]], "memref access out of bounds"
-  // CHECK:          memref.load
+  // INPLC:          memref.load
+  // SPEC-NOT:       memref.load
   %2 = memref.load %memref[%0, %1] : memref<2x2xf32>
   return %2 : f32
 }
+// SPEC:      @out_of_bounds
+// SPEC:      call @__speculative_in_bounds_check_out_of_bounds
+// SPEC:      memref.load
 
 // -----
 
-// CHECK-LABEL: @zero_d
+// INPLC-LABEL: @zero_d
+// SPEC-LABEL: @__speculative_in_bounds_check_zero_d
 func.func @zero_d(%memref: memref<f32>) -> f32 {
-  // CHECK: memref.load
+  // INPLC:    memref.load
+  // SPEC-NOT: memref.load
   %0 = memref.load %memref[] : memref<f32>
   return %0 : f32
 }
+// SPEC:      @zero_d
+// SPEC:      call @__speculative_in_bounds_check_zero_d
+// SPEC:      memref.load
 
 // -----
 
-// CHECK-LABEL: @vector_load_vector_static
+// INPLC-LABEL: @vector_load_vector_static
+// SPEC-LABEL: @__speculative_in_bounds_check_vector_load_vector_static
 func.func @vector_load_vector_static(%memref: memref<2x2xvector<2xf32>>) -> vector<2xf32> {
   %0 = arith.constant 0 : index
   %1 = arith.constant 1 : index
@@ -115,14 +152,19 @@ func.func @vector_load_vector_static(%memref: memref<2x2xvector<2xf32>>) -> vect
   //
   // COMPOUND:       %[[TRUE:.+]] = arith.constant true
   // COMPOUND:       cf.assert %[[TRUE]], "memref access out of bounds"
-  // CHECK:          vector.load
+  // INPLC:          vector.load
+  // SPEC-NOT:       vector.load
   %2 = vector.load %memref[%0, %1] : memref<2x2xvector<2xf32>>, vector<2xf32>
   return %2 : vector<2xf32>
 }
+// SPEC:      @vector_load_vector_static
+// SPEC:      call @__speculative_in_bounds_check_vector_load_vector_static
+// SPEC:      vector.load
 
 // -----
 
-// CHECK-LABEL: @vector_load_scalar_static_1d_in_bounds
+// INPLC-LABEL: @vector_load_scalar_static_1d_in_bounds
+// SPEC-LABEL: @__speculative_in_bounds_check_vector_load_scalar_static_1d_in_bounds
 func.func @vector_load_scalar_static_1d_in_bounds(%memref: memref<5x9xf32>) -> vector<2xf32> {
   %0 = arith.constant 0 : index
   // PERDIM-NOT:     cf.assert
@@ -131,15 +173,19 @@ func.func @vector_load_scalar_static_1d_in_bounds(%memref: memref<5x9xf32>) -> v
   // VECTOR:         cf.assert %[[TRUE0]], "memref access out of bounds along dimension 0"
   // VECTOR:         %[[TRUE1:.+]] = arith.constant true
   // VECTOR:         cf.assert %[[TRUE1]], "memref access out of bounds along dimension 1"
-  // CHECK:          vector.load
+  // INPLC:          vector.load
+  // SPEC-NOT:       vector.load
   %2 = vector.load %memref[%0, %0] : memref<5x9xf32>, vector<2xf32>
   return %2 : vector<2xf32>
 }
-
+// SPEC:      @vector_load_scalar_static_1d_in_bounds
+// SPEC:      call @__speculative_in_bounds_check_vector_load_scalar_static_1d_in_bounds
+// SPEC:      vector.load
 
 // -----
 
-// CHECK-LABEL: @vector_load_scalar_static_1d_out_of_bounds
+// INPLC-LABEL: @vector_load_scalar_static_1d_out_of_bounds
+// SPEC-LABEL: @__speculative_in_bounds_check_vector_load_scalar_static_1d_out_of_bounds
 func.func @vector_load_scalar_static_1d_out_of_bounds(%memref: memref<5x9xf32>) -> vector<2xf32> {
   %0 = arith.constant 0 : index
   %1 = arith.constant 8 : index
@@ -149,27 +195,32 @@ func.func @vector_load_scalar_static_1d_out_of_bounds(%memref: memref<5x9xf32>) 
   // VECTOR:         cf.assert %[[TRUE]], "memref access out of bounds along dimension 0"
   // VECTOR:         %[[FALSE:.+]] = arith.constant false
   // VECTOR:         cf.assert %[[FALSE]], "memref access out of bounds along dimension 1"
-  // CHECK:          vector.load
+  // INPLC:          vector.load
+  // SPEC-NOT:       vector.load
   %2 = vector.load %memref[%0, %1] : memref<5x9xf32>, vector<2xf32>
   return %2 : vector<2xf32>
 }
+// SPEC:      @vector_load_scalar_static_1d_out_of_bounds
+// SPEC:      call @__speculative_in_bounds_check_vector_load_scalar_static_1d_out_of_bounds
+// SPEC:      vector.load
 
 // -----
 
 // From this point, we only check the PERDIM scenario as checking dimensions
 // separately or together has no incidence on how the control flow is handled.
 
-// CHECK-LABEL: @loop
+// INPLC-LABEL: @loop
 func.func @loop(%memref: memref<2xf32>, %lb: index, %ub: index, %step: index) -> f32 {
   %0 = arith.constant 0.0 : f32
-  // PERDIM:         scf.for %[[I:.+]] = %{{.*}} to
+  // PERDIM-INPLC:   scf.for %[[I:.+]] = %{{.*}} to
+  // expected-error @below {{in-bounds check generation requires speculating this operation, but it is not speculatable}}
   %1 = scf.for %i = %lb to %ub step %step iter_args(%acc = %0) -> (f32) {
-    // PERDIM:         %[[ZERO:.+]] = arith.constant 0 : index
-    // PERDIM:         %[[TWO:.+]] = arith.constant 2 : index
-    // PERDIM:         %[[LB:.+]] = arith.cmpi sge, %[[I]], %[[ZERO]] : index
-    // PERDIM:         %[[UB:.+]] = arith.cmpi slt, %[[I]], %[[TWO]] : index
-    // PERDIM:         %[[BOUND:.+]] = arith.andi %[[LB]], %[[UB]]
-    // PERDIM:         cf.assert %[[BOUND]], "memref access out of bounds along dimension 0"
+    // PERDIM-INPLC:   %[[ZERO:.+]] = arith.constant 0 : index
+    // PERDIM-INPLC:   %[[TWO:.+]] = arith.constant 2 : index
+    // PERDIM-INPLC:   %[[LB:.+]] = arith.cmpi sge, %[[I]], %[[ZERO]] : index
+    // PERDIM-INPLC:   %[[UB:.+]] = arith.cmpi slt, %[[I]], %[[TWO]] : index
+    // PERDIM-INPLC:   %[[BOUND:.+]] = arith.andi %[[LB]], %[[UB]]
+    // PERDIM-INPLC:   cf.assert %[[BOUND]], "memref access out of bounds along dimension 0"
     %2 = memref.load %memref[%i] : memref<2xf32>
     %3 = arith.addf %acc, %2 : f32
     scf.yield %3 : f32
@@ -179,7 +230,8 @@ func.func @loop(%memref: memref<2xf32>, %lb: index, %ub: index, %step: index) ->
 
 // -----
 
-// CHECK-LABEL: @loop
+// INPLC-LABEL: @loop_store
+// SPEC-LABEL: @__speculative_in_bounds_check_loop_store
 func.func @loop_store(%memref: memref<2xf32>, %lb: index, %ub: index, %step: index) {
   // PERDIM:         scf.for %[[I:.+]] = %{{.*}} to
   scf.for %i = %lb to %ub step %step {
@@ -191,15 +243,21 @@ func.func @loop_store(%memref: memref<2xf32>, %lb: index, %ub: index, %step: ind
     // PERDIM:         cf.assert %[[BOUND]], "memref access out of bounds along dimension 0"
     %2 = arith.index_cast %i : index to i64
     %3 = arith.sitofp %2 : i64 to f32
+    // INPLC:          memref.store
+    // SPEC-NOT:       memref.store
     memref.store %3, %memref[%i] : memref<2xf32>
     scf.yield
   }
   return
 }
+// SPEC:      @loop_store
+// SPEC:      call @__speculative_in_bounds_check_loop_store
+// SPEC:      memref.store
 
 // -----
 
-// CHECK-LABEL: @if
+// INPLC-LABEL: @if
+// SPEC-LABEL: @__speculative_in_bounds_check_if
 func.func @if(%memref: memref<2xf32>, %val: f32, %cond: i1){
   // PERDIM:         scf.if
   scf.if %cond {
@@ -210,23 +268,27 @@ func.func @if(%memref: memref<2xf32>, %val: f32, %cond: i1){
   }
   return
 }
+// SPEC:      @if
+// SPEC:      call @__speculative_in_bounds_check_if
+// SPEC:      memref.store
 
 // -----
 
-// CHECK-LABEL: @if_else
+// INPLC-LABEL: @if_else
 func.func @if_else(%memref: memref<2xf32>, %cond: i1) -> f32 {
-  // PERDIM:         scf.if
+  // PERDIM-INPLC:   scf.if
+  // expected-error @below {{in-bounds check generation requires speculating this operation, but it is not speculatable}}
   %0 = scf.if %cond -> f32 {
     %1 = arith.constant 0 : index
-    // PERDIM:         %[[TRUE:.+]] = arith.constant true
-    // PERDIM:         cf.assert %[[TRUE]], "memref access out of bounds along dimension 0"
+    // PERDIM-INPLC:   %[[TRUE:.+]] = arith.constant true
+    // PERDIM-INPLC:   cf.assert %[[TRUE]], "memref access out of bounds along dimension 0"
     %2 = memref.load %memref[%1] : memref<2xf32>
     scf.yield %2 : f32
-  // PERDIM:         else
+  // PERDIM-INPLC:   else
   } else {
     %3 = arith.constant 0 : index
-    // PERDIM:         %[[TRUE:.+]] = arith.constant true
-    // PERDIM:         cf.assert %[[TRUE]], "memref access out of bounds along dimension 0"
+    // PERDIM-INPLC:   %[[TRUE:.+]] = arith.constant true
+    // PERDIM-INPLC:   cf.assert %[[TRUE]], "memref access out of bounds along dimension 0"
     %4 = memref.load %memref[%3] : memref<2xf32>
     scf.yield %4 : f32
   }
@@ -235,26 +297,35 @@ func.func @if_else(%memref: memref<2xf32>, %cond: i1) -> f32 {
 
 // -----
 
-// CHECK-LABEL: @if_else_store
+// INPLC-LABEL: @if_else_store
+// SPEC-LABEL: @__speculative_in_bounds_check_if_else_store
 func.func @if_else_store(%memref: memref<2xf32>, %cond: i1, %value: f32) {
   // PERDIM:         scf.if
   scf.if %cond {
     %0 = arith.constant 0 : index
     // PERDIM:         %[[TRUE:.+]] = arith.constant true
     // PERDIM:         cf.assert %[[TRUE]], "memref access out of bounds along dimension 0"
+    // INPLC:          memref.store
+    // SPEC-NOT:       memref.store
     memref.store %value, %memref[%0] : memref<2xf32>
   } else {
     %1 = arith.constant 2 : index
     // PERDIM:         %[[FALSE:.+]] = arith.constant false
     // PERDIM:         cf.assert %[[FALSE]], "memref access out of bounds along dimension 0"
+    // INPLC:          memref.store
+    // SPEC-NOT:       memref.store
     memref.store %value, %memref[%1] : memref<2xf32>
   }
   return
 }
+// SPEC:      @if_else_store
+// SPEC:      call @__speculative_in_bounds_check_if_else_store
+// SPEC:      memref.store
 
 // -----
 
-// CHECK-LABEL: @nested_for_indep
+// INPLC-LABEL: @nested_for_indep
+// SPEC-LABEL: @__speculative_in_bounds_check_nested_for_indep
 func.func @nested_for_indep(%memref: memref<?xf32>, %lb: index, %ub: index, %step: index) {
   // PERDIM:         scf.for %[[I:.+]] = %{{.*}} to
   scf.for %i = %lb to %ub step %step {
@@ -272,7 +343,8 @@ func.func @nested_for_indep(%memref: memref<?xf32>, %lb: index, %ub: index, %ste
       // PERDIM:         %[[UB:.+]] = arith.cmpi slt, %[[J]], %[[DIM0]]
       // PERDIM:         %[[BOUND:.+]] = arith.andi %[[LB]], %[[UB]]
       // PERDIM:         cf.assert %[[BOUND]], "memref access out of bounds along dimension 0"
-      // CHECK:          memref.store
+      // INPLC:          memref.store
+      // SPEC-NOT:       memref.store
       memref.store %2, %memref[%j] : memref<?xf32>
     }
   }
@@ -281,7 +353,8 @@ func.func @nested_for_indep(%memref: memref<?xf32>, %lb: index, %ub: index, %ste
 
 // -----
 
-// CHECK-LABEL: @nested_for
+// INPLC-LABEL: @nested_for
+// SPEC-LABEL: @__speculative_in_bounds_check_nested_for
 func.func @nested_for(%memref: memref<?x?xf32>, %lb: index, %ub: index, %step: index) {
   // PERDIM:         scf.for %[[I:.+]] = %{{.*}} to
   scf.for %i = %lb to %ub step %step {
@@ -307,10 +380,14 @@ func.func @nested_for(%memref: memref<?x?xf32>, %lb: index, %ub: index, %step: i
       // PERDIM:         %[[BOUND1:.+]] = arith.andi %[[LB1]], %[[UB1]]
       // PERDIM:         cf.assert %[[BOUND1]], "memref access out of bounds along dimension 1"
       //
-      // CHECK:          memref.store
+      // INPLC:          memref.store
+      // SPEC-NOT:       memref.store
       memref.store %2, %memref[%i, %j] : memref<?x?xf32>
       scf.yield %sum : index
     }
   }
   return
 }
+// SPEC:      @nested_for
+// SPEC:      call @__speculative_in_bounds_check_nested_for
+// SPEC:      memref.store
