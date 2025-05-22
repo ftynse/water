@@ -18,7 +18,9 @@ int main(int argc, char **argv) {
   mlir::water::registerPasses();
 
   mlir::DialectRegistry registry;
-  registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect>();
+  registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
+                  mlir::memref::MemRefDialect, mlir::scf::SCFDialect,
+                  mlir::vector::VectorDialect>();
 
   return mlir::asMainReturnCode(
       mlir::MlirOptMain(argc, argv, "water optimizer driver\n", registry));
