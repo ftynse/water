@@ -28,4 +28,8 @@ def WaterAssertInBoundsPass : Pass<"water-assert-in-bounds"> {
   ];
 }
 
+def WaterCheckStaticAssertionsPass : Pass<"water-check-static-assertions"> {
+  let summary = "Fail if the IR contains a known-false assertion.";
+}
+
 #endif // WATER_PASSES
