@@ -9,12 +9,13 @@ add_mlir_dialect_library(MLIRWaterTransforms
   MLIRWaterPassesIncGen
 
   LINK_LIBS PUBLIC
+  MLIRAnalysis
   MLIRArithDialect
   MLIRControlFlowDialect
   MLIRFuncDialect
   MLIRIR
   MLIRMemRefDialect
   MLIRPass
-  MLIRSCFDialect
   MLIRVectorDialect
+  MLIRWaterAnalysis
 )

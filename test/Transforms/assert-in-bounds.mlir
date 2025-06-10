@@ -67,6 +67,7 @@ func.func @shape_static_one_index_dynamic(%memref: memref<5x2xf32>, %i: index) -
 // INPLC-LABEL: @shape_dynamic
 // SPEC-LABEL:  @__speculative_in_bounds_check_shape_dynamic
 func.func @shape_dynamic(%memref: memref<?x?xf32>) -> f32 {
+  // SPEC:           %{{.*}} = arith.constant 0.0
   // CHECK:          %[[INDEX0:.+]] = arith.constant 0
   // CHECK:          %[[INDEX1:.+]] = arith.constant 1
   %0 = arith.constant 0 : index
@@ -206,21 +207,25 @@ func.func @vector_load_scalar_static_1d_out_of_bounds(%memref: memref<5x9xf32>) 
 
 // -----
 
-// From this point, we only check the PERDIM scenario as checking dimensions
+// From this point, we only check the PERDIM/SPEC scenario as checking dimensions
 // separately or together has no incidence on how the control flow is handled.
 
 // INPLC-LABEL: @loop
+// SPEC-LABEL: @__speculative_in_bounds_check_loop
 func.func @loop(%memref: memref<2xf32>, %lb: index, %ub: index, %step: index) -> f32 {
+  // SPEC:           %[[ITER_ARG_INIT:.+]] = arith.constant 0.0
   %0 = arith.constant 0.0 : f32
-  // PERDIM-INPLC:   scf.for %[[I:.+]] = %{{.*}} to
-  // expected-error @below {{in-bounds check generation requires speculating this operation, but it is not speculatable}}
+  // PERDIM:         scf.for %[[I:.+]] = %{{.*}} to
+  // SPEC-SAME:      iter_args(%{{.*}} = %[[ITER_ARG_INIT]])
   %1 = scf.for %i = %lb to %ub step %step iter_args(%acc = %0) -> (f32) {
-    // PERDIM-INPLC:   %[[ZERO:.+]] = arith.constant 0 : index
-    // PERDIM-INPLC:   %[[TWO:.+]] = arith.constant 2 : index
-    // PERDIM-INPLC:   %[[LB:.+]] = arith.cmpi sge, %[[I]], %[[ZERO]] : index
-    // PERDIM-INPLC:   %[[UB:.+]] = arith.cmpi slt, %[[I]], %[[TWO]] : index
-    // PERDIM-INPLC:   %[[BOUND:.+]] = arith.andi %[[LB]], %[[UB]]
-    // PERDIM-INPLC:   cf.assert %[[BOUND]], "memref access out of bounds along dimension 0"
+    // SPEC:           %[[YIELDED:.+]] = arith.constant 0.0
+    // PERDIM:         %[[ZERO:.+]] = arith.constant 0 : index
+    // PERDIM:         %[[TWO:.+]] = arith.constant 2 : index
+    // PERDIM:         %[[LB:.+]] = arith.cmpi sge, %[[I]], %[[ZERO]] : index
+    // PERDIM:         %[[UB:.+]] = arith.cmpi slt, %[[I]], %[[TWO]] : index
+    // PERDIM:         %[[BOUND:.+]] = arith.andi %[[LB]], %[[UB]]
+    // PERDIM:         cf.assert %[[BOUND]], "memref access out of bounds along dimension 0"
+    // SPEC:           scf.yield %[[YIELDED]]
     %2 = memref.load %memref[%i] : memref<2xf32>
     %3 = arith.addf %acc, %2 : f32
     scf.yield %3 : f32
@@ -276,20 +281,23 @@ func.func @if(%memref: memref<2xf32>, %val: f32, %cond: i1){
 
 // INPLC-LABEL: @if_else
 func.func @if_else(%memref: memref<2xf32>, %cond: i1) -> f32 {
-  // PERDIM-INPLC:   scf.if
-  // expected-error @below {{in-bounds check generation requires speculating this operation, but it is not speculatable}}
+  // PERDIM:         scf.if
   %0 = scf.if %cond -> f32 {
+    // SPEC:           %[[YIELDED_1:.+]] = arith.constant 0.0
     %1 = arith.constant 0 : index
-    // PERDIM-INPLC:   %[[TRUE:.+]] = arith.constant true
-    // PERDIM-INPLC:   cf.assert %[[TRUE]], "memref access out of bounds along dimension 0"
+    // PERDIM:         %[[TRUE:.+]] = arith.constant true
+    // PERDIM:         cf.assert %[[TRUE]], "memref access out of bounds along dimension 0"
     %2 = memref.load %memref[%1] : memref<2xf32>
+    // SPEC:           scf.yield %[[YIELDED_1]]
     scf.yield %2 : f32
-  // PERDIM-INPLC:   else
+  // PERDIM:         else
   } else {
+    // SPEC:           %[[YIELDED_2:.+]] = arith.constant 0.0
     %3 = arith.constant 0 : index
-    // PERDIM-INPLC:   %[[TRUE:.+]] = arith.constant true
-    // PERDIM-INPLC:   cf.assert %[[TRUE]], "memref access out of bounds along dimension 0"
+    // PERDIM:         %[[TRUE:.+]] = arith.constant true
+    // PERDIM:         cf.assert %[[TRUE]], "memref access out of bounds along dimension 0"
     %4 = memref.load %memref[%3] : memref<2xf32>
+    // SPEC:           scf.yield %[[YIELDED_2]]
     scf.yield %4 : f32
   }
   return %0 : f32
@@ -333,6 +341,7 @@ func.func @nested_for_indep(%memref: memref<?xf32>, %lb: index, %ub: index, %ste
     %lb1 = arith.addi %i, %c1 : index
     // PERDIM:         scf.for %[[J:.+]] = %{{.*}} to
     scf.for %j = %lb1 to %ub step %step {
+      // SPEC:           %{{.*}} = arith.constant 0.0
       %sum = arith.addi %i, %j : index
       %1 = arith.index_cast %sum : index to i64
       %2 = arith.uitofp %1 : i64 to f32
@@ -365,6 +374,8 @@ func.func @nested_for(%memref: memref<?x?xf32>, %lb: index, %ub: index, %step: i
       %sum = arith.addi %secondary, %c1 : index
       %1 = arith.index_cast %sum : index to i64
       %2 = arith.uitofp %1 : i64 to f32
+      // SPEC:           %[[DUMMY_YIELD:.+]] = arith.constant 0
+      // SPEC:           %{{.*}} = arith.constant 0.0
       // PERDIM:         %[[ZERO0:.+]] = arith.constant 0
       // PERDIM:         %[[ZERO1:.+]] = arith.constant 0
       // PERDIM:         %[[DIM0:.+]] = memref.dim %{{.*}}, %[[ZERO1]]
@@ -382,6 +393,8 @@ func.func @nested_for(%memref: memref<?x?xf32>, %lb: index, %ub: index, %step: i
       //
       // INPLC:          memref.store
       // SPEC-NOT:       memref.store
+      //
+      // SPEC:           scf.yield %[[DUMMY_YIELD]]
       memref.store %2, %memref[%i, %j] : memref<?x?xf32>
       scf.yield %sum : index
     }
@@ -391,3 +404,16 @@ func.func @nested_for(%memref: memref<?x?xf32>, %lb: index, %ub: index, %step: i
 // SPEC:      @nested_for
 // SPEC:      call @__speculative_in_bounds_check_nested_for
 // SPEC:      memref.store
+
+// -----
+
+// INPLC-LABEL: @dynamic_bound
+func.func @dynamic_bound(%lb: index, %ub: memref<index>, %step: index, %data: memref<?xf32>) {
+  // expected-error @below {{in-bounds check generation requires speculating this operation, but it is not speculatable}}
+  %0 = memref.load %ub[] : memref<index>
+  scf.for %i = %lb to %0 step %step {
+    // PERDIM-INPLC:    cf.assert
+    memref.load %data[%i] : memref<?xf32>
+  }
+  return
+}

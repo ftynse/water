@@ -4,8 +4,12 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "water/Analysis/InUseForSpeculation.h"
 #include "water/Transforms/Passes.h"
 
+#include "mlir/Analysis/DataFlow/ConstantPropagationAnalysis.h"
+#include "mlir/Analysis/DataFlow/DeadCodeAnalysis.h"
+#include "mlir/Analysis/DataLayoutAnalysis.h"
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -14,7 +18,6 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
@@ -24,8 +27,11 @@
 #include "mlir/Support/LLVM.h"
 
 #include "llvm/ADT/BitVector.h"
-#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/Debug.h"
+
+#define DEBUG_TYPE "assert-in-bounds"
+#define DBGS() llvm::dbgs() << DEBUG_TYPE
 
 namespace mlir::water {
 #define GEN_PASS_DEF_WATERASSERTINBOUNDSPASS
@@ -33,6 +39,7 @@ namespace mlir::water {
 } // namespace mlir::water
 
 using namespace mlir;
+using namespace mlir::water;
 
 /// Kind of checks to insert.
 enum class CheckKind { PerDimension, Combined };
@@ -194,18 +201,6 @@ insertInBoundsAssertionDispatch(OpBuilder &builder, Operation *op,
       });
 }
 
-/// Applies `func` to every element in `range` and checks the result. Fails
-/// immediately if application failed on one element without checking the
-/// following elements.
-template <typename Range, typename Func>
-LogicalResult try_transform(Range &&range, Func &&func) {
-  for (auto &&elem : range) {
-    if (failed(func(elem)))
-      return failure();
-  }
-  return success();
-}
-
 // TODO: these should be part of the function op interface. Note the caveat for
 // the dependent dialects of the pass using it if the call does not belong to
 // the same dialect as the func op (very unlikely).
@@ -234,66 +229,35 @@ static Operation *createReturn(OpBuilder &builder, Location loc,
   return nullptr;
 }
 
-static LogicalResult isSpeculatableForInBoundsAssertions(Operation *op);
-
-/// Checks if all operations in the provided ranges can be cloned to the
-/// speculative assertion function.
-template <typename Range>
-LogicalResult checkSpeculatable(Range &&range) {
-  for (Operation *element : range) {
-    if (failed(isSpeculatableForInBoundsAssertions(element)))
-      return failure();
+/// Creates a dummy value, typically zero, to be used as operand that is not
+/// participating in control flow or indexing, e.g., secondary loop iterators
+/// that may be needed for structural correctness while cloning operations but
+/// don't affect the logic.
+static Value createDummyValue(OpBuilder &builder, Location loc, Type type) {
+  if (type.isInteger()) {
+    return builder.create<arith::ConstantOp>(loc, type,
+                                             builder.getIntegerAttr(type, 0));
   }
-  return success();
+  if (type.isIndex()) {
+    return builder.create<arith::ConstantIndexOp>(loc, 0);
+  }
+  if (auto floatType = dyn_cast<FloatType>(type)) {
+    return builder.create<arith::ConstantFloatOp>(
+        loc, llvm::APFloat::getZero(floatType.getFloatSemantics()), floatType);
+  }
+  if (auto vecType = dyn_cast<VectorType>(type)) {
+    Value element = createDummyValue(builder, loc, vecType.getElementType());
+    if (!element)
+      return nullptr;
+    return builder.create<vector::SplatOp>(loc, element, vecType);
+  }
+  return nullptr;
 }
 
-/// Checks if the given operation can be cloned to the speculative assertion
-/// function. Unlike the generic speculatability check, this accounts for the
-/// fact that some operations will not be cloned.
-static LogicalResult isSpeculatableForInBoundsAssertions(Operation *op) {
-  // We consider structured control flow speculatable if the values it yields
-  // come from speculatable operations. Note that this also means the backward
-  // slice of the yielded values must be included into the operations to clone.
-  // This is the case because we include the slice of the terminator.
-  //
-  // TODO: We may want to have a mechanism to clone control flow without
-  // yielding additional values. However, we may need to still yield the values
-  // if they are used by some operations we are carrying over to the speculative
-  // function. So potentially the current solution is to keep them and to later
-  // run a dead iterarg elimination procedure followed by regular DCE in the
-  // body.
-  if (auto forOp = dyn_cast<scf::ForOp>(op)) {
-    if (!forOp.getBody()->mightHaveTerminator())
-      return success();
-    SetVector<Operation *> slice;
-    BackwardSliceOptions options;
-    options.filter = [&](Operation *filterOp) { return op != filterOp; };
-    (void)getBackwardSlice(forOp.getBody()->getTerminator(), &slice);
-    slice.remove(op);
-    return checkSpeculatable(slice);
-  }
-  if (auto ifOp = dyn_cast<scf::IfOp>(op)) {
-    if (ifOp.getElseRegion().empty() ||
-        !ifOp.getThenRegion().front().mightHaveTerminator() ||
-        !ifOp.getElseRegion().front().mightHaveTerminator())
-      return success();
-
-    SetVector<Operation *> slice, sliceElse;
-    BackwardSliceOptions options;
-    options.filter = [&](Operation *filterOp) { return op != filterOp; };
-    (void)getBackwardSlice(ifOp.getThenRegion().front().getTerminator(), &slice,
-                           options);
-    slice.remove(op);
-    if (failed(checkSpeculatable(slice)))
-      return failure();
-    (void)getBackwardSlice(ifOp.getElseRegion().front().getTerminator(),
-                           &sliceElse, options);
-    sliceElse.remove(op);
-    return checkSpeculatable(sliceElse);
-  }
-
-  // For other operations, defer to the generic speculability check.
-  return success(isSpeculatable(op));
+/// Indicates which operations will be replaced with an in-bounds check.
+static bool isReplacedWithCheck(Operation *op) {
+  return isa<memref::LoadOp, memref::StoreOp, vector::LoadOp, vector::StoreOp>(
+      op);
 }
 
 /// Creates a new function performing a speculative check that all known kinds
@@ -303,43 +267,55 @@ static LogicalResult isSpeculatableForInBoundsAssertions(Operation *op) {
 /// if it would require speculating operations that should not be, such as
 /// stores to memory.
 static LogicalResult
-createSpeculativeInBoundsChecks(RewriterBase &rewriter,
-                                FunctionOpInterface funcOp,
-                                const InsertInBoundsAssertionsConfig &config) {
-  SetVector<Operation *> operationsToProcess;
-  llvm::SmallPtrSet<Operation *, 8> checkedOperations;
+createSpeculativeFunction(RewriterBase &rewriter, FunctionOpInterface funcOp,
+                          const DataFlowSolver &solver,
+                          const InsertInBoundsAssertionsConfig &config) {
+  IRMapping mapping;
+  OpBuilder::InsertionGuard guard(rewriter);
 
-  // Collects the backward slice of the given `source` (operation or value) into
-  // `operationsToProcess`. Checks that the operations in the slice can be
-  // speculated for the purposes of in-bounds checks insertion.
-  auto collectSlice = [&](auto source, bool inclusive) {
-    if constexpr (std::is_same_v<std::remove_reference_t<decltype(source)>,
-                                 Value>) {
-      assert(!inclusive && "backward slice of a value cannot be inclusive");
+  // Values that are known-used or could not be analyzed are considered as
+  // potentially used.
+  auto mayBeUsed = [&](Value value) {
+    auto *lattice = solver.lookupState<InUseLattice>(value);
+    if (!lattice) {
+      LLVM_DEBUG(DBGS() << "no lattice for " << value
+                        << ", presuming dead code");
+      return false;
     }
-    SetVector<Operation *> slice;
-    BackwardSliceOptions sliceOptions;
-    sliceOptions.inclusive = inclusive;
-    (void)getBackwardSlice(source, &slice, sliceOptions);
-    size_t originalSize = operationsToProcess.size();
-    operationsToProcess.insert_range(slice);
+    return lattice->getValue().get() == InUseLatticeState::Used ||
+           lattice->getValue().get() == InUseLatticeState::Undecidable;
+  };
 
-    // Check that newly inserted ops are speculatable.
-    for (Operation *op :
-         operationsToProcess.getArrayRef().drop_front(originalSize)) {
-      if (failed(isSpeculatableForInBoundsAssertions(op))) {
-        op->emitError() << "in-bounds check generation requires speculating "
-                           "this operation, but it is not speculatable";
-        return failure();
-      }
+  // Collect operations that should be cloned into the speculative functions.
+  DenseSet<Operation *> activeOperations;
+  activeOperations.insert(funcOp);
+  WalkResult walkResult = funcOp->walk([&](Operation *op) {
+    // Be eager about control flow for now, we use direct block mapping to find
+    // insertion points below.
+    if (op->getNumRegions() != 0 || op->hasTrait<OpTrait::IsTerminator>()) {
+      activeOperations.insert(op);
+      return WalkResult::advance();
     }
 
-    return success();
-  };
-  auto collectSlices = [&](ValueRange values) {
-    return try_transform(
-        values, [&](Value v) { return collectSlice(v, /*inclusive=*/false); });
-  };
+    if (!llvm::any_of(op->getResults(), mayBeUsed))
+      return WalkResult::advance();
+
+    // Don't speculate operations that shouldn't be.
+    // TODO: we may need additional dependency analysis to figure out if we can
+    // speculate reads, i.e., as long we as are not reading values that were
+    // stored before and reads are not volatile, we should be fine.
+    if (!isSpeculatable(op)) {
+      op->emitError() << "in-bounds check generation requires speculating this "
+                         "operation, but it is not speculatable";
+      return WalkResult::interrupt();
+    }
+    activeOperations.insert(op);
+    return WalkResult::advance();
+  });
+  if (walkResult.wasInterrupted())
+    return failure();
+
+  auto isActive = [&](Operation *op) { return activeOperations.contains(op); };
 
   // Returns `true` if the given operation is a terminator returning from the
   // function being processed.
@@ -348,123 +324,47 @@ createSpeculativeInBoundsChecks(RewriterBase &rewriter,
            op->getNumSuccessors() == 0 && op->getParentOp() == funcOp;
   };
 
-  // Collect operations to be processed: either cloned to the speculative check
-  // function or replaced with assertions.
-  WalkResult walkResult = funcOp->walk([&](Operation *op) {
-    for (Region &region : op->getRegions()) {
-      if (region.empty() || llvm::hasSingleElement(region.getBlocks()))
-        continue;
+  // Must walk in pre-order to ensure regions/blocks are created before
+  // entering them.
+  walkResult = funcOp->walk<WalkOrder::PreOrder>([&](Operation *op) {
+    if (!isActive(op) && !isReplacedWithCheck(op))
+      return WalkResult::advance();
 
-      // TODO: support branching control flow, which requires adding support for
-      // it in backward slicing.
-      op->emitError("branching control flow not supported");
-      return WalkResult::interrupt();
+    // When about to clone an op, create dummy values for anything that is not
+    // active, e.g., secondary iteration arguments that are not participating in
+    // control flow. This will preserve syntactic correctness without the
+    // runtime overhead of actually computing those values.
+    for (auto [i, operand] : llvm::enumerate(op->getOperands())) {
+      if (!mayBeUsed(operand) && !mapping.contains(operand)) {
+        OpBuilder::InsertionGuard guard(rewriter);
+        rewriter.setInsertionPointToStart(
+            mapping.lookup(operand.getParentBlock()));
+        Value dummy =
+            createDummyValue(rewriter, op->getLoc(), operand.getType());
+        if (!dummy) {
+          op->emitError() << "could not create a speculative operand #" << i;
+          return WalkResult::interrupt();
+        }
+        mapping.map(operand, dummy);
+      }
     }
-    auto result =
-        llvm::TypeSwitch<Operation *, LogicalResult>(op)
-            .Case<memref::LoadOp, vector::LoadOp>([&](Operation *op) {
-              // The slice includes the address of the load to account for
-              // situations where (a) it comes from a view/subview and we want
-              // to replicate that and (b) avoid replicating allocations/copies
-              // thanks to the speculability check.
-              if (failed(collectSlice(op, /*inclusive=*/false)))
-                return failure();
-              // The current operation is not included in the backward slice so
-              // add it separately. This is intentional because the
-              // memory-accessing operation is known to be non-speculatable
-              // while operations we collect are checked to be speculatable. We
-              // will not be actually cloning it, so don't check it.
-              operationsToProcess.insert(op);
-              checkedOperations.insert(op);
-              return success();
-            })
-            .Case<memref::StoreOp, vector::StoreOp>([&](auto op) {
-              // Do not include the value to store in the slice, we don't need
-              // it since we are not going to actually store it.
-              if (failed(collectSlices(op.getIndices())))
-                return failure();
-              if (failed(collectSlices(getAccessBase(op))))
-                return failure();
-              // Same as above for loads.
-              operationsToProcess.insert(op);
-              checkedOperations.insert(op);
-              return success();
-            })
-            .Case<scf::IfOp, scf::ForOp>([&](Operation *op) {
-              if (failed(collectSlice(op, /*inclusive=*/true)))
-                return failure();
-              return success();
-            })
-            .Case<FunctionOpInterface>([](auto op) { return success(); })
-            .Default([&](Operation *op) {
-              if (op->getNumRegions() != 0) {
-                // TODO: we could default to computing backwards slices of all
-                // operands conservatively, but there may also be side effects
-                // affecting the control flow...
-                op->emitError() << "unhandled region-carrying operation";
-                return failure();
-              }
-              if (!op->hasTrait<OpTrait::IsTerminator>())
-                return success();
 
-              // If we have a terminator "returning" from the current function,
-              // i.e. has no successors, it will be cloned without operands, so
-              // don't take its backward slice, but include the op itself for
-              // cloning.
-              if (isFuncReturn(op)) {
-                operationsToProcess.insert(op);
-                return success();
-              }
-
-              return collectSlice(op, /*inclusive=*/true);
-            });
-
-    if (failed(result))
-      return WalkResult::interrupt();
-    return WalkResult::advance();
-  });
-  if (walkResult.wasInterrupted())
-    return failure();
-
-  // Create the speculative check function.
-  IRMapping mapping;
-  OpBuilder::InsertionGuard guard(rewriter);
-  rewriter.setInsertionPoint(funcOp);
-  auto clonedFuncOp =
-      cast<FunctionOpInterface>(rewriter.cloneWithoutRegions(*funcOp, mapping));
-  clonedFuncOp.setName("__speculative_in_bounds_check_" +
-                       clonedFuncOp.getName().str());
-  clonedFuncOp.setVisibility(SymbolTable::Visibility::Private);
-  if (failed(clonedFuncOp.eraseResults(
-          llvm::BitVector(funcOp.getNumResults(), true)))) {
-    return funcOp->emitError()
-           << "cannot create a speculative checker function with no results to "
-              "match this function";
-  }
-
-  // Clone operations into the speculative function and insert checks.
-  Block *entryBlock = clonedFuncOp.addEntryBlock();
-  mapping.map(&funcOp.getFunctionBody().front(), entryBlock);
-  mapping.map(funcOp.getArguments(), entryBlock->getArguments());
-  // Need to re-sort operations because they come from distinct slices and may
-  // be unordered wrt each other even if they were ordered in one slice.
-  // Operations that are being checked will not be actually cloned, but we
-  // still want them in the topological order so we can insert the checks at
-  // the appropriate location.
-  for (Operation *op : topologicalSort(operationsToProcess)) {
-    // Given that ops appear in topological order, we can always insert them to
-    // the end of the corresponding block.
-    rewriter.setInsertionPointToEnd(mapping.lookup(op->getBlock()));
+    if (op == funcOp)
+      rewriter.setInsertionPoint(funcOp);
+    else
+      rewriter.setInsertionPointToEnd(mapping.lookup(op->getBlock()));
 
     // Insert the checks where required. Note that insertion operates around an
     // existing memory-accessing operation, so we first clone it, call the
     // insertion, and then erase the cloned operation.
-    if (checkedOperations.contains(op)) {
+    if (isReplacedWithCheck(op)) {
       Operation *cloned = rewriter.clone(*op, mapping);
       if (failed(insertInBoundsAssertionDispatch(rewriter, cloned, config)))
-        return failure();
+        return WalkResult::advance();
       rewriter.eraseOp(cloned);
-      continue;
+      for (Value result : op->getResults())
+        mapping.erase(result);
+      return WalkResult::advance();
     }
 
     // Create explicit no-operand returns from the function since we removed all
@@ -472,8 +372,8 @@ createSpeculativeInBoundsChecks(RewriterBase &rewriter,
     if (isFuncReturn(op)) {
       if (createReturn(rewriter, op->getLoc(), funcOp, /*operands=*/{}) ==
           nullptr)
-        return failure();
-      continue;
+        return WalkResult::interrupt();
+      return WalkResult::advance();
     }
 
     // Otherwise clone the operation. Create blocks for regions when
@@ -482,24 +382,39 @@ createSpeculativeInBoundsChecks(RewriterBase &rewriter,
     Operation *cloned = rewriter.cloneWithoutRegions(*op, mapping);
     for (auto &&[origRegion, cloneRegion] :
          llvm::zip_equal(op->getRegions(), cloned->getRegions())) {
-      if (origRegion.empty())
-        continue;
-
-      assert(llvm::hasSingleElement(origRegion) &&
-             "hitting this means the support for branching control flow is "
-             "incomplete");
-      Block &entryBlock = origRegion.front();
-      SmallVector<Location> locations =
-          llvm::map_to_vector(entryBlock.getArguments(),
-                              [](Value value) { return value.getLoc(); });
-      Block *clonedEntryBlock =
-          rewriter.createBlock(&cloneRegion, /*insertPt=*/{},
-                               entryBlock.getArgumentTypes(), locations);
-      mapping.map(&entryBlock, clonedEntryBlock);
-      mapping.map(entryBlock.getArguments(), clonedEntryBlock->getArguments());
+      for (Block &block : origRegion.getBlocks()) {
+        SmallVector<Location> argLocs =
+            llvm::map_to_vector(block.getArguments(),
+                                [](BlockArgument arg) { return arg.getLoc(); });
+        Block *clonedBlock = rewriter.createBlock(
+            &cloneRegion, {}, block.getArgumentTypes(), argLocs);
+        mapping.map(&block, clonedBlock);
+        mapping.map(block.getArguments(), clonedBlock->getArguments());
+      }
     }
-  }
 
+    // For the function itself, adapt its signature to not return anything.
+    if (op == funcOp) {
+      auto clonedFuncOp = cast<FunctionOpInterface>(cloned);
+      clonedFuncOp.setName("__speculative_in_bounds_check_" +
+                           clonedFuncOp.getName().str());
+      clonedFuncOp.setVisibility(SymbolTable::Visibility::Private);
+      if (failed(clonedFuncOp.eraseResults(
+              llvm::BitVector(funcOp.getNumResults(), true)))) {
+        funcOp->emitError() << "cannot create a speculative checker function "
+                               "with no results to "
+                               "match this function";
+        return WalkResult::interrupt();
+      }
+    }
+
+    return WalkResult::advance();
+  });
+  if (walkResult.wasInterrupted())
+    return failure();
+
+  // Call the speculation function from the original function.
+  auto clonedFuncOp = cast<FunctionOpInterface>(mapping.lookup(funcOp));
   rewriter.setInsertionPointToStart(&funcOp.getFunctionBody().front());
   Operation *call = createCall(rewriter, clonedFuncOp->getLoc(), clonedFuncOp,
                                funcOp.getArguments());
@@ -527,10 +442,20 @@ insertInPlaceInBoundsAssertions(Operation *root,
 /// to those functions.
 static LogicalResult insertSpeculativeInBoundsAssertions(
     Operation *root, const InsertInBoundsAssertionsConfig &config) {
+  DataFlowConfig dataFlowConfig;
+  dataFlowConfig.setInterprocedural(false);
+  DataFlowSolver solver(dataFlowConfig);
+  SymbolTableCollection symbolTable;
+  solver.load<dataflow::DeadCodeAnalysis>();
+  solver.load<dataflow::SparseConstantPropagation>();
+  solver.load<InUseAnalysis>(symbolTable);
+  if (failed(solver.initializeAndRun(root)))
+    return root->emitError() << "failed to complete in-use analysis";
+
   IRRewriter rewriter(root->getContext());
   WalkResult walkResult =
       root->walk<WalkOrder::PreOrder>([&](FunctionOpInterface funcOp) {
-        if (failed(createSpeculativeInBoundsChecks(rewriter, funcOp, config)))
+        if (failed(createSpeculativeFunction(rewriter, funcOp, solver, config)))
           return WalkResult::interrupt();
         return WalkResult::skip();
       });
