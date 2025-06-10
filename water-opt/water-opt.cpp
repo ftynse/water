@@ -14,8 +14,15 @@
 
 #include "water/Transforms/Passes.h"
 
+// Forward-declare test passes so we don't have a dependency on the test
+// headers.
+namespace mlir::water::test {
+void registerAllPasses();
+} // namespace mlir::water::test
+
 int main(int argc, char **argv) {
   mlir::water::registerPasses();
+  mlir::water::test::registerAllPasses();
 
   mlir::DialectRegistry registry;
   registry.insert<mlir::arith::ArithDialect, mlir::cf::ControlFlowDialect,

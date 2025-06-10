@@ -16,3 +16,5 @@ add_lit_testsuite(check-water "Running the water regression tests"
 set_target_properties(check-water PROPERTIES FOLDER "Tests")
 
 add_lit_testsuites(WATER ${CMAKE_CURRENT_SOURCE_DIR} DEPENDS ${WATER_TEST_DEPENDS})
+
+add_subdirectory(lib)

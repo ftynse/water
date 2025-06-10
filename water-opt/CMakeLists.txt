@@ -6,6 +6,7 @@ set(LIBS
         MLIRArithDialect
         MLIROptLib
         MLIRWaterTransforms
+        MLIRWaterTestTransforms
         )
 add_llvm_executable(water-opt water-opt.cpp)
 
