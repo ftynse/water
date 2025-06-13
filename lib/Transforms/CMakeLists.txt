@@ -13,7 +13,8 @@ add_mlir_dialect_library(MLIRWaterTransforms
   MLIRArithDialect
   MLIRControlFlowDialect
   MLIRFuncDialect
-  MLIRIR
+  MLIRLLVMDialect
+  MLIRLoopLikeInterface
   MLIRMemRefDialect
   MLIRPass
   MLIRVectorDialect

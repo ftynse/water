@@ -20,6 +20,9 @@ class ControlFlowDIalect;
 namespace func {
 class FuncDialect;
 } // namespace func
+namespace LLVM {
+class LLVMDialect;
+}
 
 namespace water {
 #define GEN_PASS_DECL

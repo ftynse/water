@@ -34,6 +34,14 @@ def WaterAssertInBoundsPass : Pass<"water-assert-in-bounds"> {
   ];
 }
 
+def WaterCheckFullWritesPass : Pass<"water-check-full-writes"> {
+  let dependentDialects = [
+    "arith::ArithDialect",
+    "memref::MemRefDialect",
+    "LLVM::LLVMDialect",
+  ];
+}
+
 def WaterCheckStaticAssertionsPass : Pass<"water-check-static-assertions"> {
   let summary = "Fail if the IR contains a known-false assertion.";
 }

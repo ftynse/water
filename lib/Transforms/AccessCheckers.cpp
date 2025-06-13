@@ -16,6 +16,7 @@
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -23,18 +24,21 @@
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
+#include "mlir/Interfaces/LoopLikeInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Support/LLVM.h"
 
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/FormatVariadic.h"
 
 #define DEBUG_TYPE "assert-in-bounds"
 #define DBGS() llvm::dbgs() << DEBUG_TYPE
 
 namespace mlir::water {
 #define GEN_PASS_DEF_WATERASSERTINBOUNDSPASS
+#define GEN_PASS_DEF_WATERCHECKFULLWRITESPASS
 #include "water/Transforms/Passes.h.inc"
 } // namespace mlir::water
 
@@ -487,4 +491,238 @@ void AssertInBoundsPass::runOnOperation() {
   if (failed(insertSpeculativeInBoundsAssertions(getOperation(), config)))
     signalPassFailure();
 }
+
+class CheckFullWritesPass
+    : public water::impl::WaterCheckFullWritesPassBase<CheckFullWritesPass> {
+public:
+  const llvm::StringLiteral kInitFuncNameFormat =
+      "__check_full_writes_init_bounds_{0}d";
+  const llvm::StringLiteral kWriteFuncNameFormat =
+      "__check_full_writes_write_{0}d";
+  const llvm::StringLiteral kCheckAndFreeFuncName =
+      "__check_full_writes_check_and_free";
+  const unsigned kMaxReasonableDimensionality = 12;
+
+  func::FuncOp declareFunction(OpBuilder &builder, StringRef name,
+                               TypeRange resultTypes, TypeRange argumentTypes) {
+    auto funcType = builder.getFunctionType(argumentTypes, resultTypes);
+    auto funcOp = builder.create<func::FuncOp>(
+        NameLoc::get(builder.getStringAttr("compiler-generated " + name),
+                     builder.getUnknownLoc()),
+        name, funcType);
+    funcOp.setVisibility(SymbolTable::Visibility::Private);
+    return funcOp;
+  }
+
+  // TODO: we need to represent view-like ops as, e.g., affine maps transforming
+  // new indices into the original coordinate space, so we can do stuff with
+  // them.
+  //
+  // Another option could be to do asan-like base address + offset only, but
+  // this drops MLIR multi-dimensional indexing on the floor.
+  //
+  // TODO: we can use a dataflow analysis for this
+  Value findBaseMemref(Value memref) {
+    if (auto blockArg = dyn_cast<BlockArgument>(memref)) {
+      // Function arguments (assuming all noalias) are considered base values.
+      if (isa<FunctionOpInterface>(blockArg.getOwner()->getParentOp()))
+        return memref;
+
+      if (auto forOp = dyn_cast<LoopLikeOpInterface>(
+              blockArg.getOwner()->getParentOp())) {
+        if (OpOperand *init = forOp.getTiedLoopInit(blockArg))
+          return findBaseMemref(init->get());
+      }
+
+      emitError(memref.getLoc()) << "could not find base memref for this value";
+      return nullptr;
+    }
+
+    if (hasSingleEffect<MemoryEffects::Allocate>(memref.getDefiningOp(),
+                                                 memref))
+      return memref;
+
+    emitError(memref.getLoc()) << "could not find base memref for this value";
+    return nullptr;
+  }
+
+  void runOnOperation() override {
+    Operation *root = getOperation();
+    if (!root->hasTrait<OpTrait::SymbolTable>()) {
+      root->emitError() << "pass root must be a symbol table";
+      return signalPassFailure();
+    }
+
+    OpBuilder builder(&getContext());
+    builder.setInsertionPointToStart(&getOperation()->getRegion(0).front());
+    auto ptrType = LLVM::LLVMPointerType::get(root->getContext());
+    auto indexType = builder.getIndexType();
+
+    initFuncs.reserve(kMaxReasonableDimensionality);
+    writeFuncs.reserve(kMaxReasonableDimensionality);
+    for (unsigned i = 0; i < kMaxReasonableDimensionality; ++i) {
+      initFuncs.push_back(declareFunction(
+          builder, llvm::formatv(kInitFuncNameFormat.data(), i).str(), ptrType,
+          SmallVector<Type>(i, indexType)));
+      writeFuncs.push_back(declareFunction(
+          builder, llvm::formatv(kWriteFuncNameFormat.data(), i).str(),
+          TypeRange(), SmallVector<Type>(3 * i, indexType)));
+    }
+    checkFunc = declareFunction(builder, kCheckAndFreeFuncName,
+                                builder.getIntegerType(1), ptrType);
+
+    for (auto func : root->getRegion(0).front().getOps<FunctionOpInterface>()) {
+      if (failed(processFunction(func))) {
+        signalPassFailure();
+        break;
+      }
+    }
+  }
+
+  LogicalResult processFunction(FunctionOpInterface func) {
+    if (func.isDeclaration())
+      return success();
+
+    llvm::SmallMapVector<Value, Value, 4> boundObjects;
+    llvm::SmallPtrSet<Operation *, 4> functionReturns;
+    OpBuilder builder(func.getContext());
+    builder.setInsertionPointToStart(&func.getFunctionBody().front());
+    SmallVector<Value> entryPointIndexConstantCache =
+        llvm::map_to_vector(llvm::seq<int64_t>(kMaxReasonableDimensionality),
+                            [&](int64_t pos) -> Value {
+                              return builder.create<arith::ConstantIndexOp>(
+                                  builder.getUnknownLoc(), pos);
+                            });
+    // TODO: this cache should likely be per isolated-from-above region.
+    auto getCachedEntryPointIndexConstant = [&](unsigned pos) -> Value {
+      if (pos < entryPointIndexConstantCache.size())
+        return entryPointIndexConstantCache[pos];
+      return builder.create<arith::ConstantIndexOp>(builder.getUnknownLoc(),
+                                                    pos);
+    };
+
+    WalkResult walkResult = func->walk([&](Operation *op) {
+      if (op->hasTrait<OpTrait::ReturnLike>() && op->getParentOp() == func)
+        functionReturns.insert(op);
+
+      SmallVector<Value> memrefOperands =
+          llvm::filter_to_vector(op->getOperands(), [](Value operand) {
+            return isa<MemRefType>(operand.getType());
+          });
+      if (memrefOperands.empty())
+        return WalkResult::advance();
+
+      auto effectsIface = dyn_cast<MemoryEffectOpInterface>(op);
+      if (!effectsIface) {
+        op->emitWarning() << "operation with unknown effects may be writing "
+                             "into its operand memref";
+        return WalkResult::advance();
+      }
+
+      SmallVector<Value> writtenMemRefOperands =
+          llvm::filter_to_vector(memrefOperands, [&](Value operand) {
+            SmallVector<MemoryEffects::EffectInstance> effects;
+            effectsIface.getEffectsOnValue(operand, effects);
+            return llvm::any_of(
+                effects, [](const MemoryEffects::EffectInstance &effect) {
+                  return isa<MemoryEffects::Write>(effect.getEffect());
+                });
+          });
+      if (writtenMemRefOperands.empty())
+        return WalkResult::advance();
+
+      // TODO: turn into an interface...
+      if (!isa<memref::StoreOp, vector::StoreOp>(op)) {
+        op->emitWarning() << "unsupported operation writing into memref";
+        return WalkResult::advance();
+      }
+
+      for (Value operand : writtenMemRefOperands) {
+        Value storedValue =
+            llvm::TypeSwitch<Operation *, Value>(op)
+                .Case<memref::StoreOp, vector::StoreOp>(
+                    [](auto casted) { return getAccessBase(casted); })
+                .Default([](Operation *) { return nullptr; });
+        assert(operand == storedValue);
+        (void)storedValue;
+
+        Value base = findBaseMemref(operand);
+        if (!base)
+          return WalkResult::interrupt();
+        Value &boundObject = boundObjects[base];
+        unsigned rank = cast<MemRefType>(base.getType()).getRank();
+        if (rank >= kMaxReasonableDimensionality) {
+          emitError(base.getLoc())
+              << "memref of rank " << rank << " is not supported";
+          return WalkResult::interrupt();
+        }
+        if (!boundObject) {
+          OpBuilder::InsertionGuard guard(builder);
+          if (Operation *definingOp = base.getDefiningOp()) {
+            builder.setInsertionPointAfter(definingOp);
+          } else {
+            Block *block = cast<BlockArgument>(base).getOwner();
+            Operation *insertPoint = &block->front();
+            while (isa<arith::ConstantIndexOp>(insertPoint))
+              insertPoint = insertPoint->getNextNode();
+            builder.setInsertionPoint(insertPoint);
+          }
+
+          SmallVector<Value> dims = llvm::map_to_vector(
+              llvm::seq<unsigned>(rank), [&](unsigned i) -> Value {
+                Value pos = getCachedEntryPointIndexConstant(i);
+                return builder.create<memref::DimOp>(base.getLoc(), base, pos);
+              });
+          auto call = builder.create<func::CallOp>(builder.getUnknownLoc(),
+                                                   initFuncs[rank], dims);
+          boundObject = call.getResult(0);
+        }
+
+        SmallVector<Value> writeFormat;
+        Value one = getCachedEntryPointIndexConstant(1);
+        for (unsigned i : llvm::seq<unsigned>(rank)) {
+          auto [offset, sizeValue] =
+              llvm::TypeSwitch<Operation *, std::tuple<Value, Value>>(op)
+                  .Case<memref::StoreOp, vector::StoreOp>([&](auto storeOp) {
+                    Value offset = storeOp.getIndices()[i];
+                    int64_t size = getAccessExtentAlongDim(storeOp, i);
+                    Value sizeValue = getCachedEntryPointIndexConstant(size);
+                    return std::make_tuple(offset, sizeValue);
+                  })
+                  .Default([](Operation *) {
+                    return std::make_tuple(Value(), Value());
+                  });
+          assert(offset && "unsupported op type");
+          writeFormat.append({offset, sizeValue, one});
+        }
+
+        {
+          OpBuilder::InsertionGuard guard(builder);
+          builder.setInsertionPoint(op);
+          builder.create<func::CallOp>(op->getLoc(), writeFuncs[rank],
+                                       writeFormat);
+        }
+      }
+
+      return WalkResult::advance();
+    });
+    if (walkResult.wasInterrupted())
+      return failure();
+
+    // For each return from the function, insert checks for all known values.
+    for (Operation *exit : functionReturns) {
+      OpBuilder::InsertionGuard guard(builder);
+      builder.setInsertionPoint(exit);
+      for (Value boundObject : llvm::make_second_range(boundObjects)) {
+        builder.create<func::CallOp>(boundObject.getLoc(), checkFunc,
+                                     boundObject);
+      }
+    }
+
+    return success();
+  }
+
+  SmallVector<func::FuncOp> initFuncs, writeFuncs;
+  func::FuncOp checkFunc;
+};
 } // namespace
