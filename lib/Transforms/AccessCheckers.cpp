@@ -33,6 +33,10 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
 
+// ---
+
+#include "mlir/Analysis/Presburger/PresburgerRelation.h"
+
 #define DEBUG_TYPE "assert-in-bounds"
 #define DBGS() llvm::dbgs() << DEBUG_TYPE
 
@@ -725,4 +729,119 @@ public:
   SmallVector<func::FuncOp> initFuncs, writeFuncs;
   func::FuncOp checkFunc;
 };
+
+namespace {
+using namespace mlir::presburger;
+class WrittenSet {
+public:
+  static WrittenSet *create(std::initializer_list<int64_t> sizes) {
+    std::vector<int64_t> szs(sizes);
+    int64_t rank = szs.size();
+    auto *set = new WrittenSet(rank);
+    if (rank == 0)
+      return set;
+
+    std::vector<int64_t> offsets(rank, 0), strides(rank, 1);
+    set->expected.intersect(PresburgerRelation(
+        getHyperRectangular(rank, offsets.data(), szs.data(), strides.data())));
+    return set;
+  }
+
+  void recordWrite(int64_t *offsets, int64_t *sizes, int64_t *strides) {
+    int64_t rank = expected.getSpace().getNumVarKind(VarKind::SetDim);
+    if (rank == 0) {
+      actual = expected;
+      return;
+    }
+    actual.unionInPlace(getHyperRectangular(rank, offsets, sizes, strides));
+  }
+
+  static bool checkAndDestroy(WrittenSet *set) {
+    bool covered = set->expected.subtract(set->actual).isIntegerEmpty();
+    delete set;
+    return covered;
+  }
+
+private:
+  static IntegerRelation getHyperRectangular(int64_t rank, int64_t *offsets,
+                                             int64_t *sizes, int64_t *strides) {
+    IntegerPolyhedron polyhedron(2 * rank, rank, 2 * rank + 1,
+                                 PresburgerSpace::getSetSpace(rank, 0, rank));
+    for (int64_t i = 0; i < rank; ++i) {
+      std::vector<int64_t> coefficients(2 * rank + 1);
+      // d_i >= offset_i
+      coefficients[i] = 1;
+      coefficients[2 * rank] = -offsets[i];
+      polyhedron.addInequality(coefficients);
+
+      // d_i <= offset_i + size_i
+      coefficients[i] = -1;
+      coefficients[2 * rank] = offsets[i] + sizes[i] - 1;
+      polyhedron.addInequality(coefficients);
+
+      // (d_i + offset_i) mod stride_i == 0
+      // equivalent \exists local_i : d_i + offset_i - local_i * stride_i == 0
+      coefficients[i] = 1;
+      coefficients[2 * rank] = offsets[i];
+      coefficients[rank + i] = -strides[i];
+      polyhedron.addEquality(coefficients);
+    }
+    polyhedron.simplify();
+    return polyhedron;
+  }
+
+  explicit WrittenSet(int64_t rank)
+      : expected(
+            PresburgerSet::getUniverse(PresburgerSpace::getSetSpace(rank))),
+        actual(PresburgerSet::getEmpty(PresburgerSpace::getSetSpace(rank))) {}
+
+  presburger::PresburgerSet expected;
+  presburger::PresburgerSet actual;
+};
+} // namespace
+
+template <typename... Args>
+static void *handleMultiDimCreate(Args... args) {
+  return WrittenSet::create({args...});
+}
+
+template <typename... Args>
+static void handleMultiDimWrite(void *ptr, Args... args) {
+  static_assert(sizeof...(Args) % 3 == 0,
+                "expected write arguments to be grouped by 3");
+  std::array<int64_t, sizeof...(Args)> allArgs({args...});
+  std::array<int64_t, sizeof...(Args) / 3> offsets, sizes, strides;
+  for (size_t i = 0; i < sizeof...(Args) / 3; ++i) {
+    offsets[i] = allArgs[3 * i];
+    sizes[i] = allArgs[3 * i + 1];
+    strides[i] = allArgs[3 * i + 2];
+  }
+  static_cast<WrittenSet *>(ptr)->recordWrite(offsets.data(), sizes.data(),
+                                              strides.data());
+}
+
+extern "C" {
+void *__check_full_writes_init_bounds_0d() { return WrittenSet::create({}); }
+void *__check_full_writes_init_bounds_1d(int64_t size) {
+  return WrittenSet::create({size});
+}
+void *__check_full_writes_init_bounds_2d(int64_t size0, int64_t size1) {
+  return WrittenSet::create({size0, size1});
+}
+void __check_full_writes_write_0d(void *ptr) {
+  static_cast<WrittenSet *>(ptr)->recordWrite({}, {}, {});
+}
+void __check_full_writes_write_1d(void *ptr, int64_t offset, int64_t size,
+                                  int64_t stride) {
+  static_cast<WrittenSet *>(ptr)->recordWrite(&offset, &size, &stride);
+}
+void __check_full_writes_write_2d(void *ptr, int64_t offset0, int64_t size0,
+                                  int64_t stride0, int64_t offset1,
+                                  int64_t size1, int64_t stride1) {
+  handleMultiDimWrite(ptr, offset0, size0, stride0, offset1, size1, stride1);
+}
+bool __check_full_writes_check_and_free(void *ptr) {
+  return WrittenSet::checkAndDestroy(static_cast<WrittenSet *>(ptr));
+}
+}
 } // namespace
