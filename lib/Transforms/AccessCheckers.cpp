@@ -268,16 +268,81 @@ static bool isReplacedWithCheck(Operation *op) {
       op);
 }
 
-/// Creates a new function performing a speculative check that all known kinds
-/// of memory accesses in the given function are in bounds, and inserts a call
-/// to this function as the first operation in the given function. Reports
-/// errors and returns failure if such a check cannot be created, in particular
-/// if it would require speculating operations that should not be, such as
-/// stores to memory.
-static LogicalResult
-createSpeculativeFunction(RewriterBase &rewriter, FunctionOpInterface funcOp,
-                          const DataFlowSolver &solver,
-                          const InsertInBoundsAssertionsConfig &config) {
+class SpeculativeCheckGenerator {
+public:
+  virtual ~SpeculativeCheckGenerator() = default;
+
+  LogicalResult generate(Operation *root) {
+    DataFlowConfig dataFlowConfig;
+    dataFlowConfig.setInterprocedural(false);
+    DataFlowSolver solver(dataFlowConfig);
+    SymbolTableCollection symbolTable;
+    solver.load<dataflow::DeadCodeAnalysis>();
+    solver.load<dataflow::SparseConstantPropagation>();
+    solver.load<InUseAnalysis>(symbolTable);
+    if (failed(solver.initializeAndRun(root)))
+      return root->emitError() << "failed to complete in-use analysis";
+
+    IRRewriter rewriter(root->getContext());
+    if (failed(handleRoot(rewriter, root)))
+      return failure();
+    WalkResult walkResult =
+        root->walk<WalkOrder::PreOrder>([&](FunctionOpInterface funcOp) {
+          if (funcOp.isDeclaration())
+            return WalkResult::advance();
+          if (failed(generate(rewriter, funcOp, solver)))
+            return WalkResult::interrupt();
+          return WalkResult::skip();
+        });
+    return failure(walkResult.wasInterrupted());
+  }
+
+protected:
+  virtual LogicalResult handleRoot(RewriterBase &rewriter, Operation *root) {
+    return success();
+  }
+
+  virtual LogicalResult finalizeFunction(RewriterBase &rewriter,
+                                         FunctionOpInterface funcOp,
+                                         FunctionOpInterface clonedFuncOp) {
+    // Call the speculation function from the original function.
+    rewriter.setInsertionPointToStart(&funcOp.getFunctionBody().front());
+    Operation *call = createCall(rewriter, clonedFuncOp->getLoc(), clonedFuncOp,
+                                 funcOp.getArguments());
+    return success(call != nullptr);
+  }
+
+  virtual LogicalResult handleFunction(RewriterBase &rewriter,
+                                       FunctionOpInterface funcOp) {
+    funcOp.setVisibility(SymbolTable::Visibility::Private);
+    if (failed(funcOp.eraseResults(
+            llvm::BitVector(funcOp.getNumResults(), true)))) {
+      return funcOp->emitError()
+             << "cannot create a speculative checker function with no results "
+                "to match this function";
+    }
+    return success();
+  }
+
+  virtual LogicalResult handleMemoryAccessOp(RewriterBase &rewriter,
+                                             Operation *op) = 0;
+
+  virtual Operation *handleFunctionExitPoint(RewriterBase &rewriter,
+                                             Operation *op) {
+    auto funcOp = cast<FunctionOpInterface>(op->getParentOp());
+    return createReturn(rewriter, op->getLoc(), funcOp,
+                        /*operands=*/{});
+  }
+
+private:
+  LogicalResult generate(RewriterBase &rewriter, FunctionOpInterface funcOp,
+                         const DataFlowSolver &solver);
+};
+
+LogicalResult
+SpeculativeCheckGenerator::generate(RewriterBase &rewriter,
+                                    FunctionOpInterface funcOp,
+                                    const DataFlowSolver &solver) {
   IRMapping mapping;
   OpBuilder::InsertionGuard guard(rewriter);
 
@@ -367,7 +432,7 @@ createSpeculativeFunction(RewriterBase &rewriter, FunctionOpInterface funcOp,
     // insertion, and then erase the cloned operation.
     if (isReplacedWithCheck(op)) {
       Operation *cloned = rewriter.clone(*op, mapping);
-      if (failed(insertInBoundsAssertionDispatch(rewriter, cloned, config)))
+      if (failed(handleMemoryAccessOp(rewriter, cloned)))
         return WalkResult::advance();
       rewriter.eraseOp(cloned);
       for (Value result : op->getResults())
@@ -378,8 +443,7 @@ createSpeculativeFunction(RewriterBase &rewriter, FunctionOpInterface funcOp,
     // Create explicit no-operand returns from the function since we removed all
     // results.
     if (isFuncReturn(op)) {
-      if (createReturn(rewriter, op->getLoc(), funcOp, /*operands=*/{}) ==
-          nullptr)
+      if (handleFunctionExitPoint(rewriter, op) == nullptr)
         return WalkResult::interrupt();
       return WalkResult::advance();
     }
@@ -404,16 +468,8 @@ createSpeculativeFunction(RewriterBase &rewriter, FunctionOpInterface funcOp,
     // For the function itself, adapt its signature to not return anything.
     if (op == funcOp) {
       auto clonedFuncOp = cast<FunctionOpInterface>(cloned);
-      clonedFuncOp.setName("__speculative_in_bounds_check_" +
-                           clonedFuncOp.getName().str());
-      clonedFuncOp.setVisibility(SymbolTable::Visibility::Private);
-      if (failed(clonedFuncOp.eraseResults(
-              llvm::BitVector(funcOp.getNumResults(), true)))) {
-        funcOp->emitError() << "cannot create a speculative checker function "
-                               "with no results to "
-                               "match this function";
+      if (failed(handleFunction(rewriter, clonedFuncOp)))
         return WalkResult::interrupt();
-      }
     }
 
     return WalkResult::advance();
@@ -421,13 +477,31 @@ createSpeculativeFunction(RewriterBase &rewriter, FunctionOpInterface funcOp,
   if (walkResult.wasInterrupted())
     return failure();
 
-  // Call the speculation function from the original function.
   auto clonedFuncOp = cast<FunctionOpInterface>(mapping.lookup(funcOp));
-  rewriter.setInsertionPointToStart(&funcOp.getFunctionBody().front());
-  Operation *call = createCall(rewriter, clonedFuncOp->getLoc(), clonedFuncOp,
-                               funcOp.getArguments());
-  return success(call != nullptr);
+  return finalizeFunction(rewriter, funcOp, clonedFuncOp);
 }
+
+class SpeculativeInBoundsCheckGenerator : public SpeculativeCheckGenerator {
+public:
+  explicit SpeculativeInBoundsCheckGenerator(
+      const InsertInBoundsAssertionsConfig &config)
+      : config(config) {}
+
+protected:
+  LogicalResult handleFunction(RewriterBase &rewriter,
+                               FunctionOpInterface funcOp) override {
+    funcOp.setName("__speculative_in_bounds_check_" + funcOp.getName().str());
+    return SpeculativeCheckGenerator::handleFunction(rewriter, funcOp);
+  }
+
+  LogicalResult handleMemoryAccessOp(RewriterBase &rewriter,
+                                     Operation *op) override {
+    return insertInBoundsAssertionDispatch(rewriter, op, config);
+  }
+
+private:
+  InsertInBoundsAssertionsConfig config;
+};
 
 /// Inserts bounds check assertions in place.
 static LogicalResult
@@ -442,31 +516,6 @@ insertInPlaceInBoundsAssertions(Operation *root,
       return WalkResult::interrupt();
     return WalkResult::advance();
   });
-  return failure(walkResult.wasInterrupted());
-}
-
-/// For all functions in the given scope, creates new functions speculatively
-/// checking bounds for all known memory-accessing operations, and inserts calls
-/// to those functions.
-static LogicalResult insertSpeculativeInBoundsAssertions(
-    Operation *root, const InsertInBoundsAssertionsConfig &config) {
-  DataFlowConfig dataFlowConfig;
-  dataFlowConfig.setInterprocedural(false);
-  DataFlowSolver solver(dataFlowConfig);
-  SymbolTableCollection symbolTable;
-  solver.load<dataflow::DeadCodeAnalysis>();
-  solver.load<dataflow::SparseConstantPropagation>();
-  solver.load<InUseAnalysis>(symbolTable);
-  if (failed(solver.initializeAndRun(root)))
-    return root->emitError() << "failed to complete in-use analysis";
-
-  IRRewriter rewriter(root->getContext());
-  WalkResult walkResult =
-      root->walk<WalkOrder::PreOrder>([&](FunctionOpInterface funcOp) {
-        if (failed(createSpeculativeFunction(rewriter, funcOp, solver, config)))
-          return WalkResult::interrupt();
-        return WalkResult::skip();
-      });
   return failure(walkResult.wasInterrupted());
 }
 
@@ -492,30 +541,50 @@ void AssertInBoundsPass::runOnOperation() {
     return;
   }
 
-  if (failed(insertSpeculativeInBoundsAssertions(getOperation(), config)))
+  SpeculativeInBoundsCheckGenerator generator(config);
+  if (failed(generator.generate(getOperation())))
     signalPassFailure();
 }
 
-class CheckFullWritesPass
-    : public water::impl::WaterCheckFullWritesPassBase<CheckFullWritesPass> {
-public:
-  const llvm::StringLiteral kInitFuncNameFormat =
-      "__check_full_writes_init_bounds_{0}d";
-  const llvm::StringLiteral kWriteFuncNameFormat =
-      "__check_full_writes_write_{0}d";
-  const llvm::StringLiteral kCheckAndFreeFuncName =
-      "__check_full_writes_check_and_free";
-  const unsigned kMaxReasonableDimensionality = 12;
+class SpeculativeCoverageCheckGenerator : public SpeculativeCheckGenerator {
+protected:
+  LogicalResult handleRoot(RewriterBase &rewriter, Operation *root) override {
+    if (!root->hasTrait<OpTrait::SymbolTable>()) {
+      return root->emitError() << "pass root must be a symbol table";
+    }
 
-  func::FuncOp declareFunction(OpBuilder &builder, StringRef name,
-                               TypeRange resultTypes, TypeRange argumentTypes) {
-    auto funcType = builder.getFunctionType(argumentTypes, resultTypes);
-    auto funcOp = builder.create<func::FuncOp>(
-        NameLoc::get(builder.getStringAttr("compiler-generated " + name),
-                     builder.getUnknownLoc()),
-        name, funcType);
-    funcOp.setVisibility(SymbolTable::Visibility::Private);
-    return funcOp;
+    rewriter.setInsertionPointToStart(&root->getRegion(0).front());
+    auto ptrType = LLVM::LLVMPointerType::get(root->getContext());
+    auto indexType = rewriter.getIndexType();
+
+    initFuncs.reserve(kMaxReasonableDimensionality);
+    writeFuncs.reserve(kMaxReasonableDimensionality);
+    for (unsigned i = 0; i < kMaxReasonableDimensionality; ++i) {
+      initFuncs.push_back(declareFunction(
+          rewriter, llvm::formatv(kInitFuncNameFormat.data(), i).str(), ptrType,
+          SmallVector<Type>(i, indexType)));
+      writeFuncs.push_back(declareFunction(
+          rewriter, llvm::formatv(kWriteFuncNameFormat.data(), i).str(),
+          TypeRange(), SmallVector<Type>(3 * i, indexType)));
+    }
+    checkFunc = declareFunction(rewriter, kCheckAndFreeFuncName,
+                                rewriter.getIntegerType(1), ptrType);
+    return success();
+  }
+
+  LogicalResult handleFunction(RewriterBase &rewriter,
+                               FunctionOpInterface funcOp) override {
+    OpBuilder::InsertionGuard guard(rewriter);
+    rewriter.setInsertionPointToStart(&funcOp.front());
+    entryPointIndexConstantCache =
+        llvm::map_to_vector(llvm::seq<int64_t>(kMaxReasonableDimensionality),
+                            [&](int64_t pos) -> Value {
+                              return rewriter.create<arith::ConstantIndexOp>(
+                                  rewriter.getUnknownLoc(), pos);
+                            });
+
+    funcOp.setName("__speculative_coverage_check_" + funcOp.getName().str());
+    return SpeculativeCheckGenerator::handleFunction(rewriter, funcOp);
   }
 
   // TODO: we need to represent view-like ops as, e.g., affine maps transforming
@@ -550,184 +619,153 @@ public:
     return nullptr;
   }
 
-  void runOnOperation() override {
-    Operation *root = getOperation();
-    if (!root->hasTrait<OpTrait::SymbolTable>()) {
-      root->emitError() << "pass root must be a symbol table";
-      return signalPassFailure();
-    }
-
-    OpBuilder builder(&getContext());
-    builder.setInsertionPointToStart(&getOperation()->getRegion(0).front());
-    auto ptrType = LLVM::LLVMPointerType::get(root->getContext());
-    auto indexType = builder.getIndexType();
-
-    initFuncs.reserve(kMaxReasonableDimensionality);
-    writeFuncs.reserve(kMaxReasonableDimensionality);
-    for (unsigned i = 0; i < kMaxReasonableDimensionality; ++i) {
-      initFuncs.push_back(declareFunction(
-          builder, llvm::formatv(kInitFuncNameFormat.data(), i).str(), ptrType,
-          SmallVector<Type>(i, indexType)));
-      writeFuncs.push_back(declareFunction(
-          builder, llvm::formatv(kWriteFuncNameFormat.data(), i).str(),
-          TypeRange(), SmallVector<Type>(3 * i, indexType)));
-    }
-    checkFunc = declareFunction(builder, kCheckAndFreeFuncName,
-                                builder.getIntegerType(1), ptrType);
-
-    for (auto func : root->getRegion(0).front().getOps<FunctionOpInterface>()) {
-      if (failed(processFunction(func))) {
-        signalPassFailure();
-        break;
-      }
-    }
-  }
-
-  LogicalResult processFunction(FunctionOpInterface func) {
-    if (func.isDeclaration())
+  LogicalResult handleMemoryAccessOp(RewriterBase &rewriter,
+                                     Operation *op) override {
+    if (!hasEffect<MemoryEffects::Write>(op))
       return success();
 
-    llvm::SmallMapVector<Value, Value, 4> boundObjects;
-    llvm::SmallPtrSet<Operation *, 4> functionReturns;
-    OpBuilder builder(func.getContext());
-    builder.setInsertionPointToStart(&func.getFunctionBody().front());
-    SmallVector<Value> entryPointIndexConstantCache =
-        llvm::map_to_vector(llvm::seq<int64_t>(kMaxReasonableDimensionality),
-                            [&](int64_t pos) -> Value {
-                              return builder.create<arith::ConstantIndexOp>(
-                                  builder.getUnknownLoc(), pos);
-                            });
-    // TODO: this cache should likely be per isolated-from-above region.
-    auto getCachedEntryPointIndexConstant = [&](unsigned pos) -> Value {
-      if (pos < entryPointIndexConstantCache.size())
-        return entryPointIndexConstantCache[pos];
-      return builder.create<arith::ConstantIndexOp>(builder.getUnknownLoc(),
-                                                    pos);
-    };
+    Value storeTarget =
+        llvm::TypeSwitch<Operation *, Value>(op)
+            .Case<memref::StoreOp, vector::StoreOp>(
+                [](auto casted) { return getAccessBase(casted); })
+            .Default([](Operation *) { return nullptr; });
+    if (!storeTarget)
+      return op->emitError() << "unsupported memory-writing operation";
 
-    WalkResult walkResult = func->walk([&](Operation *op) {
-      if (op->hasTrait<OpTrait::ReturnLike>() && op->getParentOp() == func)
-        functionReturns.insert(op);
-
-      SmallVector<Value> memrefOperands =
-          llvm::filter_to_vector(op->getOperands(), [](Value operand) {
-            return isa<MemRefType>(operand.getType());
-          });
-      if (memrefOperands.empty())
-        return WalkResult::advance();
-
-      auto effectsIface = dyn_cast<MemoryEffectOpInterface>(op);
-      if (!effectsIface) {
-        op->emitWarning() << "operation with unknown effects may be writing "
-                             "into its operand memref";
-        return WalkResult::advance();
-      }
-
-      SmallVector<Value> writtenMemRefOperands =
-          llvm::filter_to_vector(memrefOperands, [&](Value operand) {
-            SmallVector<MemoryEffects::EffectInstance> effects;
-            effectsIface.getEffectsOnValue(operand, effects);
-            return llvm::any_of(
-                effects, [](const MemoryEffects::EffectInstance &effect) {
-                  return isa<MemoryEffects::Write>(effect.getEffect());
-                });
-          });
-      if (writtenMemRefOperands.empty())
-        return WalkResult::advance();
-
-      // TODO: turn into an interface...
-      if (!isa<memref::StoreOp, vector::StoreOp>(op)) {
-        op->emitWarning() << "unsupported operation writing into memref";
-        return WalkResult::advance();
-      }
-
-      for (Value operand : writtenMemRefOperands) {
-        Value storedValue =
-            llvm::TypeSwitch<Operation *, Value>(op)
-                .Case<memref::StoreOp, vector::StoreOp>(
-                    [](auto casted) { return getAccessBase(casted); })
-                .Default([](Operation *) { return nullptr; });
-        assert(operand == storedValue);
-        (void)storedValue;
-
-        Value base = findBaseMemref(operand);
-        if (!base)
-          return WalkResult::interrupt();
-        Value &boundObject = boundObjects[base];
-        unsigned rank = cast<MemRefType>(base.getType()).getRank();
-        if (rank >= kMaxReasonableDimensionality) {
-          emitError(base.getLoc())
-              << "memref of rank " << rank << " is not supported";
-          return WalkResult::interrupt();
-        }
-        if (!boundObject) {
-          OpBuilder::InsertionGuard guard(builder);
-          if (Operation *definingOp = base.getDefiningOp()) {
-            builder.setInsertionPointAfter(definingOp);
-          } else {
-            Block *block = cast<BlockArgument>(base).getOwner();
-            Operation *insertPoint = &block->front();
-            while (isa<arith::ConstantIndexOp>(insertPoint))
-              insertPoint = insertPoint->getNextNode();
-            builder.setInsertionPoint(insertPoint);
-          }
-
-          SmallVector<Value> dims = llvm::map_to_vector(
-              llvm::seq<unsigned>(rank), [&](unsigned i) -> Value {
-                Value pos = getCachedEntryPointIndexConstant(i);
-                return builder.create<memref::DimOp>(base.getLoc(), base, pos);
-              });
-          auto call = builder.create<func::CallOp>(builder.getUnknownLoc(),
-                                                   initFuncs[rank], dims);
-          boundObject = call.getResult(0);
-        }
-
-        SmallVector<Value> writeFormat;
-        Value one = getCachedEntryPointIndexConstant(1);
-        for (unsigned i : llvm::seq<unsigned>(rank)) {
-          auto [offset, sizeValue] =
-              llvm::TypeSwitch<Operation *, std::tuple<Value, Value>>(op)
-                  .Case<memref::StoreOp, vector::StoreOp>([&](auto storeOp) {
-                    Value offset = storeOp.getIndices()[i];
-                    int64_t size = getAccessExtentAlongDim(storeOp, i);
-                    Value sizeValue = getCachedEntryPointIndexConstant(size);
-                    return std::make_tuple(offset, sizeValue);
-                  })
-                  .Default([](Operation *) {
-                    return std::make_tuple(Value(), Value());
-                  });
-          assert(offset && "unsupported op type");
-          writeFormat.append({offset, sizeValue, one});
-        }
-
-        {
-          OpBuilder::InsertionGuard guard(builder);
-          builder.setInsertionPoint(op);
-          builder.create<func::CallOp>(op->getLoc(), writeFuncs[rank],
-                                       writeFormat);
-        }
-      }
-
-      return WalkResult::advance();
-    });
-    if (walkResult.wasInterrupted())
+    Value base = findBaseMemref(storeTarget);
+    if (!base)
       return failure();
 
-    // For each return from the function, insert checks for all known values.
-    for (Operation *exit : functionReturns) {
-      OpBuilder::InsertionGuard guard(builder);
-      builder.setInsertionPoint(exit);
-      for (Value boundObject : llvm::make_second_range(boundObjects)) {
-        builder.create<func::CallOp>(boundObject.getLoc(), checkFunc,
-                                     boundObject);
-      }
+    Value &boundObject = boundObjects[base];
+    unsigned rank = cast<MemRefType>(base.getType()).getRank();
+    if (rank >= kMaxReasonableDimensionality) {
+      return emitError(base.getLoc())
+             << "memref of rank " << rank << " is not supported";
     }
 
+    if (!boundObject) {
+      OpBuilder::InsertionGuard guard(rewriter);
+      if (Operation *definingOp = base.getDefiningOp()) {
+        rewriter.setInsertionPointAfter(definingOp);
+      } else {
+        Block *block = cast<BlockArgument>(base).getOwner();
+        Operation *insertPoint = &block->front();
+        while (isa<arith::ConstantIndexOp>(insertPoint))
+          insertPoint = insertPoint->getNextNode();
+        rewriter.setInsertionPoint(insertPoint);
+      }
+
+      SmallVector<Value> dims = llvm::map_to_vector(
+          llvm::seq<unsigned>(rank), [&](unsigned i) -> Value {
+            Value pos = getCachedEntryPointIndexConstant(rewriter, i);
+            return rewriter.create<memref::DimOp>(base.getLoc(), base, pos);
+          });
+      auto call = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
+                                                initFuncs[rank], dims);
+      boundObject = call.getResult(0);
+    }
+
+    SmallVector<Value> writeFormat;
+    Value one = getCachedEntryPointIndexConstant(rewriter, 1);
+    for (unsigned i : llvm::seq<unsigned>(rank)) {
+      auto [offset, sizeValue] =
+          llvm::TypeSwitch<Operation *, std::tuple<Value, Value>>(op)
+              .Case<memref::StoreOp, vector::StoreOp>([&](auto storeOp) {
+                Value offset = storeOp.getIndices()[i];
+                int64_t size = getAccessExtentAlongDim(storeOp, i);
+                Value sizeValue =
+                    getCachedEntryPointIndexConstant(rewriter, size);
+                return std::make_tuple(offset, sizeValue);
+              })
+              .Default([](Operation *) {
+                return std::make_tuple(Value(), Value());
+              });
+      assert(offset && "unsupported op type");
+      writeFormat.append({offset, sizeValue, one});
+    }
+
+    {
+      OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.setInsertionPoint(op);
+      rewriter.create<func::CallOp>(op->getLoc(), writeFuncs[rank],
+                                    writeFormat);
+    }
     return success();
   }
 
+  Operation *handleFunctionExitPoint(RewriterBase &rewriter,
+                                     Operation *op) override {
+    Operation *clone =
+        SpeculativeCheckGenerator::handleFunctionExitPoint(rewriter, op);
+    if (!clone)
+      return nullptr;
+    functionReturns.insert(clone);
+    return clone;
+  }
+
+  LogicalResult finalizeFunction(RewriterBase &rewriter,
+                                 FunctionOpInterface funcOp,
+                                 FunctionOpInterface clonedFuncOp) override {
+    // For each return from the function, insert checks for all known values.
+    for (Operation *exit : functionReturns) {
+      OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.setInsertionPoint(exit);
+      for (Value boundObject : llvm::make_second_range(boundObjects)) {
+        rewriter.create<func::CallOp>(boundObject.getLoc(), checkFunc,
+                                      boundObject);
+      }
+    }
+
+    entryPointIndexConstantCache.clear();
+    boundObjects.clear();
+    functionReturns.clear();
+
+    return SpeculativeCheckGenerator::finalizeFunction(rewriter, funcOp,
+                                                       clonedFuncOp);
+  }
+
+private:
+  Value getCachedEntryPointIndexConstant(OpBuilder &builder, unsigned pos) {
+    if (pos < entryPointIndexConstantCache.size())
+      return entryPointIndexConstantCache[pos];
+    return builder.create<arith::ConstantIndexOp>(builder.getUnknownLoc(), pos);
+  }
+
+  func::FuncOp declareFunction(OpBuilder &builder, StringRef name,
+                               TypeRange resultTypes, TypeRange argumentTypes) {
+    auto funcType = builder.getFunctionType(argumentTypes, resultTypes);
+    auto funcOp = builder.create<func::FuncOp>(
+        NameLoc::get(builder.getStringAttr("compiler-generated " + name),
+                     builder.getUnknownLoc()),
+        name, funcType);
+    funcOp.setVisibility(SymbolTable::Visibility::Private);
+    return funcOp;
+  }
+
+  const llvm::StringLiteral kInitFuncNameFormat =
+      "__check_full_writes_init_bounds_{0}d";
+  const llvm::StringLiteral kWriteFuncNameFormat =
+      "__check_full_writes_write_{0}d";
+  const llvm::StringLiteral kCheckAndFreeFuncName =
+      "__check_full_writes_check_and_free";
+  const unsigned kMaxReasonableDimensionality = 12;
+
   SmallVector<func::FuncOp> initFuncs, writeFuncs;
   func::FuncOp checkFunc;
+  SmallVector<Value> entryPointIndexConstantCache;
+
+  llvm::SmallMapVector<Value, Value, 4> boundObjects;
+  llvm::SmallPtrSet<Operation *, 4> functionReturns;
+};
+
+class CheckFullWritesPass
+    : public water::impl::WaterCheckFullWritesPassBase<CheckFullWritesPass> {
+public:
+  void runOnOperation() override {
+    SpeculativeCoverageCheckGenerator generator;
+    if (failed(generator.generate(getOperation())))
+      return signalPassFailure();
+  }
 };
 
 namespace {
