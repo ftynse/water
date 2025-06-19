@@ -59,9 +59,15 @@ Here, `$LLVM_SRC_DIR` needs to point to the root of the monorepo.
 
 Please use pre-commit by installing it from
 [pre-commit.com](https://pre-commit.com) or system repository and running
-`pre-commit` in the repository once. After that, every further commit will run
-through the pre-commit checks such as formatters and linters. If any problems
-are found, please fix them and amend the commit before pushing.
+
+```sh
+pre-commit install
+pre-commit install --hook-type commit-msg
+```
+
+in the repository once. After that, every further commit will run through the
+pre-commit checks such as formatters and linters. If any problems are found,
+please fix them and amend the commit before pushing.
 
 ### Certificate of Origin
 
