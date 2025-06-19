@@ -53,6 +53,26 @@ Here, `$LLVM_SRC_DIR` needs to point to the root of the monorepo.
 * `-DCMAKE_EXPORT_COMPILE_COMMANDS=On` - generate `compile_commands.json` used
   by IDEs to discover the source file tree.
 
+### Python Wheel
+
+A Python wheel containing the `water-opt` binary can be produced using the
+following commands:
+
+```sh
+cd build_tools
+python -m pip wheel .
+```
+
+This will produce a `.whl` file containing the `water-opt` and metadata. It can
+be installed using:
+
+```sh
+pip install --force-reinstall *.whl
+```
+
+Note that force-reinstallation flag without which the wheel may not be
+reinstalled without bumping the version.
+
 ## Developing
 
 ### Pre-commit
