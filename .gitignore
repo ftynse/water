@@ -1,4 +1,7 @@
 build/
 .cache/
+.venv/
 .vscode/
+*.egg-info/
+*.whl
 *.swp
