@@ -60,7 +60,7 @@ following commands:
 
 ```sh
 cd build_tools
-python -m pip wheel .
+WATER_MLIR_DIR=$BUILD_DIR/lib/cmake/mlir python -m pip wheel .
 ```
 
 This will produce a `.whl` file containing the `water-opt` and metadata. It can
@@ -72,6 +72,9 @@ pip install --force-reinstall *.whl
 
 Note that force-reinstallation flag without which the wheel may not be
 reinstalled without bumping the version.
+
+The build mode is controlled by the `WATER_BUILD_TYPE` environment variable
+whose content is forward to cmake.
 
 ## Developing
 
@@ -88,6 +91,8 @@ pre-commit install --hook-type commit-msg
 in the repository once. After that, every further commit will run through the
 pre-commit checks such as formatters and linters. If any problems are found,
 please fix them and amend the commit before pushing.
+
+Pre-commit hooks require `black` and `gem` to be available on the system.
 
 ### Certificate of Origin
 

@@ -20,13 +20,28 @@ BINARY_DIR = os.path.join(SETUPPY_DIR, "build")
 
 
 def prepare_installation():
+    """Configures and builds C++ binaries needed for the package."""
+    mlir_dir = os.environ.get("WATER_MLIR_DIR", None)
+    if not mlir_dir:
+        raise RuntimeError(
+            "Expected MLIR directory to be provided via the WATER_MLIR_DIR environment variable"
+        )
+    if not os.path.isdir(mlir_dir) or not os.path.exists(
+        os.path.join(mlir_dir, "MLIRConfig.cmake")
+    ):
+        raise RuntimeError(
+            f"WATER_MLIR_DIR={mlir_dir} does not point to the MLIR cmake configuration"
+        )
+
+    build_type = os.environ.get("WATER_BUILD_TYPE", "Release")
+
     subprocess.check_call(["cmake", "--version"])
     cmake_args = [
         "-G Ninja",
         "-DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON",
-        # TODO: this should be found somehow...
-        "-DMLIR_DIR=/home/azinenko/git/llvm-project/build/lib/cmake/mlir",
+        f"-DMLIR_DIR={mlir_dir}",
         "-DBUILD_SHARED_LIBS=Off",
+        f"-DCMAKE_BUILD_TYPE={build_type}",
     ]
     source_dir = os.path.dirname(SETUPPY_DIR)
     os.makedirs(BINARY_DIR, exist_ok=True)
@@ -37,6 +52,8 @@ def prepare_installation():
 
 
 class CMakeBuildPy(_build_py):
+    """Pretends to be building but actually just copies pre-built binaries."""
+
     def run(self):
         target_dir = os.path.abspath(self.build_lib)
         print(f"Building in target dir: {target_dir}", file=sys.stderr)
@@ -46,6 +63,7 @@ class CMakeBuildPy(_build_py):
         shutil.copy(os.path.join(BINARY_DIR, "bin", "water-opt"), target_dir)
 
 
+# This is needed to create at least some binary understood by Python.
 class CMakeExtension(Extension):
     def __init__(self, name, sourcedir=""):
         Extension.__init__(self, name, sources=[])
@@ -83,6 +101,7 @@ class CleanEggInfo(egg_info):
         egg_info.run(self)
 
 
+# Unconditionally build the C++ binaries.
 prepare_installation()
 
 setup(
