@@ -32,7 +32,7 @@ jobs:
       - name: Setup env
         run: |
             sudo apt update
-            sudo apt install -y ninja-build cmake clang-19
+            sudo apt install -y ninja-build cmake clang
 
       - name: Setup Cache Vars
         run: |
@@ -63,8 +63,8 @@ jobs:
           git checkout $LLVM_SHA
           mkdir _build
           cd _build
-          export CC=clang-19
-          export CXX=clang++-19
+          export CC=clang
+          export CXX=clang++
           cmake ../llvm                                                        \
             -GNinja                                                            \
             -DCMAKE_BUILD_TYPE=Release                                         \
@@ -119,8 +119,8 @@ jobs:
           export LLVM_DIR=/home/runner/work/llvm-mlir/_mlir_install
           mkdir -p cmake_build
           cd cmake_build
-          export CC=clang-19
-          export CXX=clang++-19
+          export CC=clang
+          export CXX=clang++
           cmake ${GITHUB_WORKSPACE}                                            \
             -GNinja                                                            \
             -DCMAKE_BUILD_TYPE=Release                                         \
