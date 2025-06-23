@@ -6,12 +6,15 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Conversion/Passes.h"
+#include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
+#include "mlir/Transforms/Passes.h"
 #include "water/Transforms/Passes.h"
 
 // Forward-declare test passes so we don't have a dependency on the test
@@ -24,9 +27,17 @@ int main(int argc, char **argv) {
   mlir::water::registerPasses();
   mlir::water::test::registerAllPasses();
 
+  mlir::arith::registerArithIntRangeOptsPass();
+  mlir::registerCanonicalizerPass();
+  mlir::registerCSEPass();
+  mlir::registerLoopInvariantCodeMotionPass();
+  mlir::registerLowerAffinePass();
+
   mlir::DialectRegistry registry;
-  registry.insert<mlir::arith::ArithDialect, mlir::cf::ControlFlowDialect,
-                  mlir::func::FuncDialect, mlir::memref::MemRefDialect,
+  registry.insert<mlir::affine::AffineDialect, mlir::amdgpu::AMDGPUDialect,
+                  mlir::arith::ArithDialect, mlir::cf::ControlFlowDialect,
+                  mlir::func::FuncDialect, mlir::gpu::GPUDialect,
+                  mlir::LLVM::LLVMDialect, mlir::memref::MemRefDialect,
                   mlir::scf::SCFDialect, mlir::vector::VectorDialect>();
 
   return mlir::asMainReturnCode(
