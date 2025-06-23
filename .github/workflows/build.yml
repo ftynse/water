@@ -32,7 +32,7 @@ jobs:
       - name: Setup env
         run: |
           sudo apt update
-          sudo apt install -y ninja-build cmake clang
+          sudo apt install -y ninja-build cmake clang lld
           pip install lit
 
       - name: Setup Cache Vars
@@ -72,10 +72,11 @@ jobs:
             -DLLVM_ENABLE_PROJECTS="mlir"                                      \
             -DLLVM_ENABLE_ASSERTIONS=ON                                        \
             -DLLVM_INSTALL_UTILS=ON                                            \
-            -DLLVM_TARGETS_TO_BUILD="X86"                                      \
+            -DLLVM_TARGETS_TO_BUILD="X86;AMDGPU                                \
             -DLLVM_ENABLE_BINDINGS=OFF                                         \
             -DLLVM_ENABLE_ZSTD=OFF                                             \
             -DMLIR_INCLUDE_TESTS=OFF                                           \
+            -DLLVM_USE_LLD=ON                                                  \
             -DLLVM_DISTRIBUTION_COMPONENTS="llvm-headers;llvm-libraries;cmake-exports;FileCheck;count;not;mlir-headers;mlir-libraries;mlir-cmake-exports;mlir-tblgen;" \
             -DCMAKE_INSTALL_PREFIX=/home/runner/work/llvm-mlir/_mlir_install
           ninja install-distribution-stripped
@@ -102,7 +103,7 @@ jobs:
       - name: Setup env
         run: |
           sudo apt update
-          sudo apt install -y ninja-build cmake clang
+          sudo apt install -y ninja-build cmake clang lld
           pip install lit
 
       - name: Setup Cache Vars
