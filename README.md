@@ -59,7 +59,7 @@ A Python wheel containing the `water-opt` binary can be produced using the
 following commands:
 
 ```sh
-cd build_tools
+cd build_tools/wheel
 WATER_MLIR_DIR=$BUILD_DIR/lib/cmake/mlir python -m pip wheel .
 ```
 

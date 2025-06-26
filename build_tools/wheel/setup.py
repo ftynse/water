@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-from setuptools import setup, Extension
+from setuptools import setup, Extension, find_packages
 import subprocess
 import os
 import shutil
@@ -43,8 +43,10 @@ def prepare_installation():
         "-DBUILD_SHARED_LIBS=Off",
         f"-DCMAKE_BUILD_TYPE={build_type}",
     ]
-    source_dir = os.path.dirname(SETUPPY_DIR)
-    os.makedirs(BINARY_DIR, exist_ok=True)
+    source_dir = os.path.dirname(os.path.dirname(SETUPPY_DIR))
+    if os.path.exists(BINARY_DIR):
+        shutil.rmtree(BINARY_DIR)
+    os.makedirs(BINARY_DIR)
     subprocess.check_call(["cmake", source_dir, *cmake_args], cwd=BINARY_DIR)
     subprocess.check_call(
         ["cmake", "--build", ".", "--target", "water-opt"], cwd=BINARY_DIR
@@ -55,12 +57,13 @@ class CMakeBuildPy(_build_py):
     """Pretends to be building but actually just copies pre-built binaries."""
 
     def run(self):
-        target_dir = os.path.abspath(self.build_lib)
+        target_dir = os.path.join(os.path.abspath(self.build_lib), "water_mlir")
         print(f"Building in target dir: {target_dir}", file=sys.stderr)
         if os.path.exists(target_dir):
             shutil.rmtree(target_dir)
         os.makedirs(target_dir)
         shutil.copy(os.path.join(BINARY_DIR, "bin", "water-opt"), target_dir)
+        shutil.copy(os.path.join(SETUPPY_DIR, "tools", "binaries.py"), target_dir)
 
 
 # This is needed to create at least some binary understood by Python.
@@ -107,7 +110,8 @@ prepare_installation()
 setup(
     name="water_mlir",
     version="0.1.0",
-    ext_modules=[CMakeExtension("water_mlir")],
+    packages=find_packages(include=["tools"]),
+    ext_modules=[CMakeExtension("water_mlir_ext")],
     cmdclass={
         "build": CustomBuild,
         "built_ext": NoopBuildExtension,
