@@ -26,12 +26,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup env
-        run: |
-          sudo apt update
-          sudo apt install -y ninja-build cmake clang lld
-          pip install lit
-
       - name: Setup Cache Vars
         run: |
           echo "LLVM_SHA=$(cat $GITHUB_WORKSPACE/$LLVM_SHA_FILE)" >> $GITHUB_ENV
@@ -43,6 +37,13 @@ jobs:
           path: |
             /home/runner/work/llvm-mlir/_mlir_install/**
           key: ${{ runner.os }}-build-llvm-${{ env.LLVM_CACHE_NUMBER }}-${{ env.LLVM_SHA }}
+
+      - name: Setup env
+        if: steps.cache-llvm-mlir.outputs.cache-hit != 'true'
+        run: |
+          sudo apt update
+          sudo apt install -y ninja-build cmake clang lld
+          pip install lit
 
       - name: Checkout LLVM
         if: steps.cache-llvm-mlir.outputs.cache-hit != 'true'
