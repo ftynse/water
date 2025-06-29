@@ -20,7 +20,7 @@ func.func @negative_single_op(%arg0: memref<8xi32>, %arg1: memref<8xi32>) {
 func.func @read_write(%arg0: memref<8xi32>, %arg1: memref<8xi32>) {
   // CHECK:     %[[C0:.*]] = arith.constant 0 : index
   // CHECK:     %[[RES:.*]] = vector.load %[[ARG0]][%[[C0]]] : memref<8xi32>, vector<4xi32>
-  // CHECK:     vector.store %[[RES]], %[[ARG0]][%[[C0]]] : memref<8xi32>, vector<4xi32>
+  // CHECK:     vector.store %[[RES]], %[[ARG1]][%[[C0]]] : memref<8xi32>, vector<4xi32>
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %c2 = arith.constant 2 : index
@@ -31,10 +31,10 @@ func.func @read_write(%arg0: memref<8xi32>, %arg1: memref<8xi32>) {
   %2 = memref.load %arg0[%c2] : memref<8xi32>
   %3 = memref.load %arg0[%c3] : memref<8xi32>
 
-  memref.store %0, %arg0[%c0] : memref<8xi32>
-  memref.store %1, %arg0[%c1] : memref<8xi32>
-  memref.store %2, %arg0[%c2] : memref<8xi32>
-  memref.store %3, %arg0[%c3] : memref<8xi32>
+  memref.store %0, %arg1[%c0] : memref<8xi32>
+  memref.store %1, %arg1[%c1] : memref<8xi32>
+  memref.store %2, %arg1[%c2] : memref<8xi32>
+  memref.store %3, %arg1[%c3] : memref<8xi32>
 
   return
 }
@@ -46,7 +46,7 @@ func.func @read_write_size_mistamtch(%arg0: memref<8xi32>, %arg1: memref<8xi32>)
   // CHECK:     %[[C0:.*]] = arith.constant 0 : index
   // CHECK:     %[[RES:.*]] = vector.load %[[ARG0]][%[[C0]]] : memref<8xi32>, vector<4xi32>
   // CHECK:     %[[RES1:.*]] = vector.extract_strided_slice %[[RES]] {offsets = [0], sizes = [2], strides = [1]} : vector<4xi32> to vector<2xi32>
-  // CHECK:     vector.store %[[RES1]], %[[ARG0]][%[[C0]]] : memref<8xi32>, vector<2xi32>
+  // CHECK:     vector.store %[[RES1]], %[[ARG1]][%[[C0]]] : memref<8xi32>, vector<2xi32>
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %c2 = arith.constant 2 : index
@@ -57,8 +57,8 @@ func.func @read_write_size_mistamtch(%arg0: memref<8xi32>, %arg1: memref<8xi32>)
   %2 = memref.load %arg0[%c2] : memref<8xi32>
   %3 = memref.load %arg0[%c3] : memref<8xi32>
 
-  memref.store %0, %arg0[%c0] : memref<8xi32>
-  memref.store %1, %arg0[%c1] : memref<8xi32>
+  memref.store %0, %arg1[%c0] : memref<8xi32>
+  memref.store %1, %arg1[%c1] : memref<8xi32>
 
   return
 }
@@ -69,7 +69,7 @@ func.func @read_write_size_mistamtch(%arg0: memref<8xi32>, %arg1: memref<8xi32>)
 func.func @read_write_interleaved(%arg0: memref<8xi32>, %arg1: memref<8xi32>) {
   // CHECK:     %[[C0:.*]] = arith.constant 0 : index
   // CHECK:     %[[RES:.*]] = vector.load %[[ARG0]][%[[C0]]] : memref<8xi32>, vector<4xi32>
-  // CHECK:     vector.store %[[RES]], %[[ARG0]][%[[C0]]] : memref<8xi32>, vector<4xi32>
+  // CHECK:     vector.store %[[RES]], %[[ARG1]][%[[C0]]] : memref<8xi32>, vector<4xi32>
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %c2 = arith.constant 2 : index
@@ -80,10 +80,10 @@ func.func @read_write_interleaved(%arg0: memref<8xi32>, %arg1: memref<8xi32>) {
   %2 = memref.load %arg0[%c2] : memref<8xi32>
   %1 = memref.load %arg0[%c1] : memref<8xi32>
 
-  memref.store %1, %arg0[%c1] : memref<8xi32>
-  memref.store %0, %arg0[%c0] : memref<8xi32>
-  memref.store %3, %arg0[%c3] : memref<8xi32>
-  memref.store %2, %arg0[%c2] : memref<8xi32>
+  memref.store %1, %arg1[%c1] : memref<8xi32>
+  memref.store %0, %arg1[%c0] : memref<8xi32>
+  memref.store %3, %arg1[%c3] : memref<8xi32>
+  memref.store %2, %arg1[%c2] : memref<8xi32>
 
   return
 }
@@ -93,7 +93,7 @@ func.func @read_write_interleaved(%arg0: memref<8xi32>, %arg1: memref<8xi32>) {
 //  CHECK-SAME: (%[[ARG0:.*]]: memref<8xi32>, %[[ARG1:.*]]: memref<8xi32>, %[[ARG2:.*]]: index)
 func.func @read_write_add_index(%arg0: memref<8xi32>, %arg1: memref<8xi32>, %arg2: index) {
   // CHECK:     %[[RES:.*]] = vector.load %[[ARG0]][%[[ARG2]]] : memref<8xi32>, vector<4xi32>
-  // CHECK:     vector.store %[[RES]], %[[ARG0]][%[[ARG2]]] : memref<8xi32>, vector<4xi32>
+  // CHECK:     vector.store %[[RES]], %[[ARG1]][%[[ARG2]]] : memref<8xi32>, vector<4xi32>
   %c1 = arith.constant 1 : index
   %c2 = arith.constant 2 : index
   %c3 = arith.constant 3 : index
@@ -107,10 +107,10 @@ func.func @read_write_add_index(%arg0: memref<8xi32>, %arg1: memref<8xi32>, %arg
   %2 = memref.load %arg0[%ind2] : memref<8xi32>
   %3 = memref.load %arg0[%ind3] : memref<8xi32>
 
-  memref.store %0, %arg0[%arg2] : memref<8xi32>
-  memref.store %1, %arg0[%ind1] : memref<8xi32>
-  memref.store %2, %arg0[%ind2] : memref<8xi32>
-  memref.store %3, %arg0[%ind3] : memref<8xi32>
+  memref.store %0, %arg1[%arg2] : memref<8xi32>
+  memref.store %1, %arg1[%ind1] : memref<8xi32>
+  memref.store %2, %arg1[%ind2] : memref<8xi32>
+  memref.store %3, %arg1[%ind3] : memref<8xi32>
 
   return
 }
@@ -120,7 +120,7 @@ func.func @read_write_add_index(%arg0: memref<8xi32>, %arg1: memref<8xi32>, %arg
 //  CHECK-SAME: (%[[ARG0:.*]]: memref<8xi32>, %[[ARG1:.*]]: memref<8xi32>, %[[ARG2:.*]]: index)
 func.func @read_write_add_index_interleaved(%arg0: memref<8xi32>, %arg1: memref<8xi32>, %arg2: index) {
   // CHECK:     %[[RES:.*]] = vector.load %[[ARG0]][%[[ARG2]]] : memref<8xi32>, vector<4xi32>
-  // CHECK:     vector.store %[[RES]], %[[ARG0]][%[[ARG2]]] : memref<8xi32>, vector<4xi32>
+  // CHECK:     vector.store %[[RES]], %[[ARG1]][%[[ARG2]]] : memref<8xi32>, vector<4xi32>
   %c1 = arith.constant 1 : index
   %c2 = arith.constant 2 : index
   %c3 = arith.constant 3 : index
@@ -134,10 +134,10 @@ func.func @read_write_add_index_interleaved(%arg0: memref<8xi32>, %arg1: memref<
   %3 = memref.load %arg0[%ind3] : memref<8xi32>
   %2 = memref.load %arg0[%ind2] : memref<8xi32>
 
-  memref.store %3, %arg0[%ind3] : memref<8xi32>
-  memref.store %0, %arg0[%arg2] : memref<8xi32>
-  memref.store %1, %arg0[%ind1] : memref<8xi32>
-  memref.store %2, %arg0[%ind2] : memref<8xi32>
+  memref.store %3, %arg1[%ind3] : memref<8xi32>
+  memref.store %0, %arg1[%arg2] : memref<8xi32>
+  memref.store %1, %arg1[%ind1] : memref<8xi32>
+  memref.store %2, %arg1[%ind2] : memref<8xi32>
 
   return
 }
@@ -153,7 +153,7 @@ func.func @read_write_add_index_interleaved(%arg0: memref<8xi32>, %arg1: memref<
 func.func @read_write_affine_apply(%arg0: memref<8xi32>, %arg1: memref<8xi32>, %arg2: index, %arg3: index) {
   // CHECK:     %[[IDX:.*]] = affine.apply #{{.*}}()[%[[ARG2]], %[[ARG3]]]
   // CHECK:     %[[RES:.*]] = vector.load %[[ARG0]][%[[IDX]]] : memref<8xi32>, vector<4xi32>
-  // CHECK:     vector.store %[[RES]], %[[ARG0]][%[[IDX]]] : memref<8xi32>, vector<4xi32>
+  // CHECK:     vector.store %[[RES]], %[[ARG1]][%[[IDX]]] : memref<8xi32>, vector<4xi32>
 
   %ind0 = affine.apply #map0()[%arg2, %arg3]
   %ind1 = affine.apply #map1()[%arg2, %arg3]
@@ -165,10 +165,10 @@ func.func @read_write_affine_apply(%arg0: memref<8xi32>, %arg1: memref<8xi32>, %
   %2 = memref.load %arg0[%ind2] : memref<8xi32>
   %3 = memref.load %arg0[%ind3] : memref<8xi32>
 
-  memref.store %0, %arg0[%ind0] : memref<8xi32>
-  memref.store %1, %arg0[%ind1] : memref<8xi32>
-  memref.store %2, %arg0[%ind2] : memref<8xi32>
-  memref.store %3, %arg0[%ind3] : memref<8xi32>
+  memref.store %0, %arg1[%ind0] : memref<8xi32>
+  memref.store %1, %arg1[%ind1] : memref<8xi32>
+  memref.store %2, %arg1[%ind2] : memref<8xi32>
+  memref.store %3, %arg1[%ind3] : memref<8xi32>
 
   return
 }
@@ -908,24 +908,24 @@ func.func @read_read_add_write_interleaved_use_add(%arg0: memref<8xi32>, %arg1: 
 // CHECK-LABEL: func @different_blocks
 //  CHECK-SAME: (%[[ARG0:.*]]: memref<8xi32>, %[[ARG1:.*]]: memref<8xi32>)
 func.func @different_blocks(%arg0: memref<8xi32>, %arg1: memref<8xi32>) {
-    // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
-    // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
-    // CHECK:     %[[V0:.*]] = vector.load %[[ARG0]][%[[C0]]] : memref<8xi32>, vector<4xi32>
-    // CHECK:     %[[V1:.*]] = vector.extract_strided_slice %[[V0]] {offsets = [2], sizes = [2], strides = [1]} : vector<4xi32> to vector<2xi32>
-    // CHECK:     %[[V2:.*]] = vector.load %[[ARG1]][%[[C0]]] : memref<8xi32>, vector<4xi32>
-    // CHECK:     %[[V3:.*]] = vector.extract_strided_slice %[[V2]] {offsets = [2], sizes = [2], strides = [1]} : vector<4xi32> to vector<2xi32>
-    // CHECK:     cf.br ^bb1
-    // CHECK:   ^bb1:
-    // CHECK:     %[[V4:.*]] = vector.extract_strided_slice %[[V0]] {offsets = [0], sizes = [2], strides = [1]} : vector<4xi32> to vector<2xi32>
-    // CHECK:     %[[V5:.*]] = vector.extract_strided_slice %[[V2]] {offsets = [0], sizes = [2], strides = [1]} : vector<4xi32> to vector<2xi32>
-    // CHECK:     %[[V6:.*]] = arith.addi %[[V4]], %[[V5]] : vector<2xi32>
-    // CHECK:     cf.br ^bb2
-    // CHECK:   ^bb2:
-    // CHECK:     %[[V7:.*]] = arith.addi %[[V1]], %[[V3]] : vector<2xi32>
-    // CHECK:     cf.br ^bb3
-    // CHECK:   ^bb3:
-    // CHECK:     vector.store %[[V6]], %[[ARG0]][%[[C0]]] : memref<8xi32>, vector<2xi32>
-    // CHECK:     vector.store %[[V7]], %[[ARG0]][%[[C2]]] : memref<8xi32>, vector<2xi32>
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+  // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
+  // CHECK:     %[[V0:.*]] = vector.load %[[ARG0]][%[[C0]]] : memref<8xi32>, vector<4xi32>
+  // CHECK:     %[[V1:.*]] = vector.extract_strided_slice %[[V0]] {offsets = [2], sizes = [2], strides = [1]} : vector<4xi32> to vector<2xi32>
+  // CHECK:     %[[V2:.*]] = vector.load %[[ARG1]][%[[C0]]] : memref<8xi32>, vector<4xi32>
+  // CHECK:     %[[V3:.*]] = vector.extract_strided_slice %[[V2]] {offsets = [2], sizes = [2], strides = [1]} : vector<4xi32> to vector<2xi32>
+  // CHECK:     cf.br ^bb1
+  // CHECK:   ^bb1:
+  // CHECK:     %[[V4:.*]] = vector.extract_strided_slice %[[V0]] {offsets = [0], sizes = [2], strides = [1]} : vector<4xi32> to vector<2xi32>
+  // CHECK:     %[[V5:.*]] = vector.extract_strided_slice %[[V2]] {offsets = [0], sizes = [2], strides = [1]} : vector<4xi32> to vector<2xi32>
+  // CHECK:     %[[V6:.*]] = arith.addi %[[V4]], %[[V5]] : vector<2xi32>
+  // CHECK:     cf.br ^bb2
+  // CHECK:   ^bb2:
+  // CHECK:     %[[V7:.*]] = arith.addi %[[V1]], %[[V3]] : vector<2xi32>
+  // CHECK:     cf.br ^bb3
+  // CHECK:   ^bb3:
+  // CHECK:     vector.store %[[V6]], %[[ARG0]][%[[C0]]] : memref<8xi32>, vector<2xi32>
+  // CHECK:     vector.store %[[V7]], %[[ARG0]][%[[C2]]] : memref<8xi32>, vector<2xi32>
 
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
