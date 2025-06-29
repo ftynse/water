@@ -350,6 +350,57 @@ func.func @read_read_add_write_vec_1d(%arg0: memref<8xi32>, %arg1: memref<8xi32>
 }
 
 
+// CHECK-LABEL: func @read_write_masked
+//  CHECK-SAME: (%[[ARG0:.*]]: memref<8xi32>, %[[ARG1:.*]]: memref<8xi32>
+//  CHECK-SAME:   %[[M0:.*]]: vector<1xi1>, %[[M1:.*]]: vector<1xi1>, %[[M2:.*]]: vector<1xi1>, %[[M3:.*]]: vector<1xi1>,
+//  CHECK-SAME:   %[[P0:.*]]: vector<1xi32>, %[[P1:.*]]: vector<1xi32>, %[[P2:.*]]: vector<1xi32>, %[[P3:.*]]: vector<1xi32>)
+func.func @read_write_masked(%arg0: memref<8xi32>, %arg1: memref<8xi32>,
+                            %mask0: vector<1xi1>,
+                            %mask1: vector<1xi1>,
+                            %mask2: vector<1xi1>,
+                            %mask3: vector<1xi1>,
+                            %passthru0: vector<1xi32>,
+                            %passthru1: vector<1xi32>,
+                            %passthru2: vector<1xi32>,
+                            %passthru3: vector<1xi32>) {
+  // CHECK: %[[C0:.*]] = arith.constant 0 : index
+  // CHECK: %[[MASK0:.*]] = vector.extract %[[M0:.*]][0] : i1 from vector<1xi1>
+  // CHECK: %[[MASK1:.*]] = vector.extract %[[M1:.*]][0] : i1 from vector<1xi1>
+  // CHECK: %[[MASK2:.*]] = vector.extract %[[M2:.*]][0] : i1 from vector<1xi1>
+  // CHECK: %[[MASK3:.*]] = vector.extract %[[M3:.*]][0] : i1 from vector<1xi1>
+  // CHECK: %[[MASK_VEC:.*]] = vector.from_elements %[[MASK0]], %[[MASK1]], %[[MASK2]], %[[MASK3]] : vector<4xi1>
+  // CHECK: %[[PASS0:.*]] = vector.extract %[[P0:.*]][0] : i32 from vector<1xi32>
+  // CHECK: %[[PASS1:.*]] = vector.extract %[[P1:.*]][0] : i32 from vector<1xi32>
+  // CHECK: %[[PASS2:.*]] = vector.extract %[[P2:.*]][0] : i32 from vector<1xi32>
+  // CHECK: %[[PASS3:.*]] = vector.extract %[[P3:.*]][0] : i32 from vector<1xi32>
+  // CHECK: %[[PASS_VEC:.*]] = vector.from_elements %[[PASS0]], %[[PASS1]], %[[PASS2]], %[[PASS3]] : vector<4xi32>
+  // CHECK: %[[LOAD:.*]] = vector.maskedload %[[MEM:.*]][%[[C0]]], %[[MASK_VEC]], %[[PASS_VEC]] : memref<8xi32>, vector<4xi1>, vector<4xi32> into vector<4xi32>
+  // CHECK: %[[MASK0_2:.*]] = vector.extract %[[M0:.*]][0] : i1 from vector<1xi1>
+  // CHECK: %[[MASK1_2:.*]] = vector.extract %[[M1:.*]][0] : i1 from vector<1xi1>
+  // CHECK: %[[MASK2_2:.*]] = vector.extract %[[M2:.*]][0] : i1 from vector<1xi1>
+  // CHECK: %[[MASK3_2:.*]] = vector.extract %[[M3:.*]][0] : i1 from vector<1xi1>
+  // CHECK: %[[MASK_VEC_2:.*]] = vector.from_elements %[[MASK0_2]], %[[MASK1_2]], %[[MASK2_2]], %[[MASK3_2]] : vector<4xi1>
+  // CHECK: vector.maskedstore %[[MEM:.*]][%[[C0]]], %[[MASK_VEC_2]], %[[LOAD]] : memref<8xi32>, vector<4xi1>, vector<4xi32>
+
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
+  %c3 = arith.constant 3 : index
+
+  %0 = vector.maskedload %arg0[%c0], %mask0, %passthru0 : memref<8xi32>, vector<1xi1>, vector<1xi32> into vector<1xi32>
+  %1 = vector.maskedload %arg0[%c1], %mask1, %passthru1 : memref<8xi32>, vector<1xi1>, vector<1xi32> into vector<1xi32>
+  %2 = vector.maskedload %arg0[%c2], %mask2, %passthru2 : memref<8xi32>, vector<1xi1>, vector<1xi32> into vector<1xi32>
+  %3 = vector.maskedload %arg0[%c3], %mask3, %passthru3 : memref<8xi32>, vector<1xi1>, vector<1xi32> into vector<1xi32>
+
+  vector.maskedstore %arg1[%c0], %mask0, %0 : memref<8xi32>, vector<1xi1>, vector<1xi32>
+  vector.maskedstore %arg1[%c1], %mask1, %1 : memref<8xi32>, vector<1xi1>, vector<1xi32>
+  vector.maskedstore %arg1[%c2], %mask2, %2 : memref<8xi32>, vector<1xi1>, vector<1xi32>
+  vector.maskedstore %arg1[%c3], %mask3, %3 : memref<8xi32>, vector<1xi1>, vector<1xi32>
+
+  return
+}
+
+
 // CHECK-LABEL: func @read_read_add_write_mixed_vecs
 //  CHECK-SAME: (%[[ARG0:.*]]: memref<8xi32>, %[[ARG1:.*]]: memref<8xi32>)
 func.func @read_read_add_write_mixed_vecs(%arg0: memref<8xi32>, %arg1: memref<8xi32>) {

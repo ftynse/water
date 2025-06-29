@@ -82,8 +82,30 @@ getElementTypeAndCount(Operation *op) {
     return getVectorElementTypeAndCount(loadOp.getVectorType());
   if (auto storeOp = dyn_cast<vector::StoreOp>(op))
     return getVectorElementTypeAndCount(storeOp.getVectorType());
+  if (auto maskedLoadOp = dyn_cast<vector::MaskedLoadOp>(op))
+    return getVectorElementTypeAndCount(maskedLoadOp.getVectorType());
+  if (auto maskedStoreOp = dyn_cast<vector::MaskedStoreOp>(op))
+    return getVectorElementTypeAndCount(maskedStoreOp.getVectorType());
 
   return std::nullopt;
+}
+
+static mlir::Value getMask(Operation *op) {
+  assert(op && "null op");
+  if (auto maskedLoadOp = dyn_cast<vector::MaskedLoadOp>(op))
+    return maskedLoadOp.getMask();
+  if (auto maskedStoreOp = dyn_cast<vector::MaskedStoreOp>(op))
+    return maskedStoreOp.getMask();
+
+  return {};
+}
+
+static mlir::Value getPassthru(Operation *op) {
+  assert(op && "null op");
+  if (auto maskedLoadOp = dyn_cast<vector::MaskedLoadOp>(op))
+    return maskedLoadOp.getPassThru();
+
+  return {};
 }
 
 static bool isSupportedMemOp(Operation *op) {
@@ -141,6 +163,10 @@ static Value getBase(Operation *op) {
     return loadOp.getBase();
   if (auto storeOp = dyn_cast<vector::StoreOp>(op))
     return storeOp.getBase();
+  if (auto maskedLoadOp = dyn_cast<vector::MaskedLoadOp>(op))
+    return maskedLoadOp.getBase();
+  if (auto maskedStoreOp = dyn_cast<vector::MaskedStoreOp>(op))
+    return maskedStoreOp.getBase();
 
   llvm_unreachable("unsupported op");
 }
@@ -151,6 +177,8 @@ static Value getValueToStore(Operation *op) {
     return storeOp.getValueToStore();
   if (auto storeOp = dyn_cast<vector::StoreOp>(op))
     return storeOp.getValueToStore();
+  if (auto maskedStoreOp = dyn_cast<vector::MaskedStoreOp>(op))
+    return maskedStoreOp.getValueToStore();
 
   llvm_unreachable("unsupported op");
 }
@@ -178,6 +206,10 @@ static ValueRange getIndices(Operation *op) {
     return loadOp.getIndices();
   if (auto storeOp = dyn_cast<vector::StoreOp>(op))
     return storeOp.getIndices();
+  if (auto maskedLoadOp = dyn_cast<vector::MaskedLoadOp>(op))
+    return maskedLoadOp.getIndices();
+  if (auto maskedStoreOp = dyn_cast<vector::MaskedStoreOp>(op))
+    return maskedStoreOp.getIndices();
 
   llvm_unreachable("unsupported op");
 }
@@ -1042,33 +1074,36 @@ SLPGraph::vectorize(IRRewriter &rewriter,
     int64_t numElements = node->vectorSize();
     Location loc = op->getLoc();
 
+    auto handleNonvectorInput = [&](Value operand, unsigned index) {
+      if (getNodeForOp(operand.getDefiningOp()))
+        return;
+
+      SmallVector<Value> args;
+      for (Operation *defOp : node->ops) {
+        Value arg = defOp->getOperand(index);
+        if (auto vecType = dyn_cast<VectorType>(arg.getType())) {
+          assert(vecType.getRank() == 1);
+          for (auto j : llvm::seq(vecType.getNumElements()))
+            args.push_back(rewriter.create<vector::ExtractOp>(loc, arg, j));
+
+        } else {
+          args.push_back(arg);
+        }
+      }
+
+      auto vecType =
+          VectorType::get(numElements, getElementTypeOrSelf(operand.getType()));
+      Value vector =
+          rewriter.create<vector::FromElementsOp>(loc, vecType, args);
+      mapping.map(operand, vector);
+    };
+
     auto handleNonVectorInputs = [&](ValueRange operands) {
       // Handle the case when op operands are not vectorized or have smaller
       // vector size, construct the vector from the scalar operands using
       // FromElementsOp.
-      for (auto [i, operand] : llvm::enumerate(operands)) {
-        if (getNodeForOp(operand.getDefiningOp()))
-          continue;
-
-        SmallVector<Value> args;
-        for (Operation *defOp : node->ops) {
-          Value arg = defOp->getOperand(i);
-          if (auto vecType = dyn_cast<VectorType>(arg.getType())) {
-            assert(vecType.getRank() == 1);
-            for (auto j : llvm::seq(vecType.getNumElements()))
-              args.push_back(rewriter.create<vector::ExtractOp>(loc, arg, j));
-
-          } else {
-            args.push_back(arg);
-          }
-        }
-
-        auto vecType = VectorType::get(numElements,
-                                       getElementTypeOrSelf(operand.getType()));
-        Value vector =
-            rewriter.create<vector::FromElementsOp>(loc, vecType, args);
-        mapping.map(operand, vector);
-      }
+      for (auto [i, operand] : llvm::enumerate(operands))
+        handleNonvectorInput(operand, i);
     };
 
     auto handleNonVectorOutputs = [&](Value newResult,
@@ -1103,7 +1138,7 @@ SLPGraph::vectorize(IRRewriter &rewriter,
     };
 
     auto handleVecSizeMismatch = [&](Value arg, int64_t offset = 0) -> Value {
-      // Handle vector size misamatch between 2 vectorized nodes.
+      // Handle vector size mismatch between 2 vectorized nodes.
       auto srcType = cast<VectorType>(arg.getType());
       assert(srcType.getRank() == 1);
       if (srcType.getDimSize(0) == numElements)
@@ -1113,11 +1148,31 @@ SLPGraph::vectorize(IRRewriter &rewriter,
                                                             numElements, 1);
     };
 
+    auto getOperandIndex = [&](Value target) -> unsigned {
+      for (auto [i, operand] : llvm::enumerate(op->getOperands()))
+        if (operand == target)
+          return static_cast<unsigned>(i);
+
+      llvm_unreachable("operand not found");
+    };
+
     if (maybeReadOp(op)) {
       auto vecType =
           VectorType::get(numElements, getElementTypeAndCount(op)->first);
-      Value result = rewriter.create<vector::LoadOp>(loc, vecType, getBase(op),
-                                                     getIndices(op));
+
+      Value result;
+      if (auto mask = getMask(op)) {
+        auto passthru = getPassthru(op);
+        handleNonvectorInput(mask, getOperandIndex(mask));
+        handleNonvectorInput(passthru, getOperandIndex(passthru));
+        mask = mapping.lookupOrDefault(mask);
+        passthru = mapping.lookupOrDefault(passthru);
+        result = rewriter.create<vector::MaskedLoadOp>(
+            loc, vecType, getBase(op), getIndices(op), mask, passthru);
+      } else {
+        result = rewriter.create<vector::LoadOp>(loc, vecType, getBase(op),
+                                                 getIndices(op));
+      }
       Value originalResult = op->getResult(0);
       mapping.map(originalResult, result);
       handleNonVectorOutputs(result, originalResult.getType());
@@ -1125,7 +1180,15 @@ SLPGraph::vectorize(IRRewriter &rewriter,
       handleNonVectorInputs(getValueToStore(op));
       Value val = mapping.lookupOrDefault(getValueToStore(op));
       val = handleVecSizeMismatch(val);
-      rewriter.create<vector::StoreOp>(loc, val, getBase(op), getIndices(op));
+
+      if (auto mask = getMask(op)) {
+        handleNonvectorInput(mask, getOperandIndex(mask));
+        mask = mapping.lookupOrDefault(mask);
+        rewriter.create<vector::MaskedStoreOp>(loc, getBase(op), getIndices(op),
+                                               mask, val);
+      } else {
+        rewriter.create<vector::StoreOp>(loc, val, getBase(op), getIndices(op));
+      }
     } else if (isVectorizable(op)) {
       handleNonVectorInputs(op->getOperands());
       Operation *newOp = rewriter.clone(*op, mapping);
