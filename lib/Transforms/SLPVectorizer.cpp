@@ -215,19 +215,23 @@ static ValueRange getIndices(Operation *op) {
 }
 
 static bool isAdjacentAffineMapIndices(Value idx1, Value idx2, int64_t offset) {
-  auto applyOp1 = idx1.getDefiningOp<affine::AffineApplyOp>();
-  if (!applyOp1)
+  auto(applyOp2) = idx2.getDefiningOp<affine::AffineApplyOp>();
+  if (!applyOp2)
     return false;
 
-  auto applyOp2 = idx2.getDefiningOp<affine::AffineApplyOp>();
-  if (!applyOp2)
+  AffineExpr expr2 = applyOp2.getAffineMap().getResult(0);
+  if (applyOp2.getOperands() == ValueRange(idx1) &&
+      expr2 == (getAffineSymbolExpr(0, expr2.getContext()) + offset))
+    return true;
+
+  auto applyOp1 = idx1.getDefiningOp<affine::AffineApplyOp>();
+  if (!applyOp1)
     return false;
 
   if (applyOp1.getOperands() != applyOp2.getOperands())
     return false;
 
   AffineExpr expr1 = applyOp1.getAffineMap().getResult(0);
-  AffineExpr expr2 = applyOp2.getAffineMap().getResult(0);
   auto diff =
       simplifyAffineExpr(expr2 - expr1, 0, applyOp1.getOperands().size());
 
