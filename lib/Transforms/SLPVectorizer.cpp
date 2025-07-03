@@ -1026,7 +1026,8 @@ SLPGraph::vectorize(IRRewriter &rewriter,
 
   auto isBadNode = [&](SLPGraphNode *node) {
     // Do not vectorize stray nodes which are not connected to any other
-    // nodes.
+    // nodes. We can generate such nodes when we have a vectorized load/store
+    // node which doesn't lead to any other vectorizable ops.
     return (node->users.empty() && node->operands.empty()) ||
            node->opsCount() <= 1;
   };
