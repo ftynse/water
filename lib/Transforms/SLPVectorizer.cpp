@@ -91,7 +91,7 @@ getElementTypeAndCount(Operation *op) {
   return std::nullopt;
 }
 
-static mlir::Value getMask(Operation *op) {
+static Value getMask(Operation *op) {
   assert(op && "null op");
   if (auto maskedLoadOp = dyn_cast<vector::MaskedLoadOp>(op))
     return maskedLoadOp.getMask();
@@ -101,7 +101,7 @@ static mlir::Value getMask(Operation *op) {
   return {};
 }
 
-static mlir::Value getPassthru(Operation *op) {
+static Value getPassthru(Operation *op) {
   assert(op && "null op");
   if (auto maskedLoadOp = dyn_cast<vector::MaskedLoadOp>(op))
     return maskedLoadOp.getPassThru();
@@ -988,8 +988,8 @@ static SLPGraph buildSLPGraph(ArrayRef<MemoryOpGroup> rootGroups) {
     for (OpOperand &use : op->getUses())
       processUse(node, use);
 
-    for (auto [i, operand] : llvm::enumerate(op->getOperands()))
-      processOperands(node, operand, i);
+    for (OpOperand &operand : op->getOpOperands())
+      processOperands(node, operand.get(), operand.getOperandNumber());
   }
 
   return graph;
@@ -1149,9 +1149,9 @@ SLPGraph::vectorize(IRRewriter &rewriter,
     };
 
     auto getOperandIndex = [&](Value target) -> unsigned {
-      for (auto [i, operand] : llvm::enumerate(op->getOperands()))
-        if (operand == target)
-          return static_cast<unsigned>(i);
+      for (OpOperand &operand : op->getOpOperands())
+        if (operand.get() == target)
+          return static_cast<unsigned>(operand.getOperandNumber());
 
       llvm_unreachable("operand not found");
     };
