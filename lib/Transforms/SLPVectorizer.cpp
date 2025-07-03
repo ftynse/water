@@ -114,8 +114,7 @@ static bool isSupportedMemOp(Operation *op) {
   if (!typeAndCount)
     return false;
 
-  return isa_and_present<IntegerType, FloatType, IndexType>(
-      typeAndCount->first);
+  return VectorType::isValidElementType(typeAndCount->first);
 }
 
 /// Collect all memory operations in the block into groups.
@@ -250,8 +249,8 @@ static bool isAdjacentAffineMapIndices(Value idx1, Value idx2, int64_t offset) {
 
 /// Check if two indices are consecutive, i.e index1 + offset == index2.
 static bool isAdjacentIndices(Value idx1, Value idx2, int64_t offset) {
-  if (auto c1 = getConstantIntValue(idx1)) {
-    if (auto c2 = getConstantIntValue(idx2))
+  if (std::optional<int64_t> c1 = getConstantIntValue(idx1)) {
+    if (std::optional<int64_t> c2 = getConstantIntValue(idx2))
       return *c1 + offset == *c2;
   }
 
@@ -401,19 +400,11 @@ isVectorizable(Operation *op,
     if (expectedElementsCount && vectorElementsCount != *expectedElementsCount)
       return false;
 
-    if (!isa<IntegerType, FloatType, IndexType>(type))
+    if (!VectorType::isValidElementType(type))
       return false;
   }
 
   return true;
-}
-
-/// Get the next operation in the block, assuming `op` is not a terminator/last
-/// operation in the block.
-static Operation *nextOp(Operation *op) {
-  assert(op && "null op");
-  auto it = op->getIterator();
-  return &*std::next(it);
 }
 
 /// A node in the SLP graph representing a group of vectorizable operations
@@ -459,7 +450,7 @@ struct SLPGraphNode {
         if (!defOp || defOp->getBlock() != ret->getBlock())
           continue;
 
-        Operation *next = nextOp(defOp);
+        Operation *next = defOp->getNextNode();
         if (ret->isBeforeInBlock(next))
           ret = next;
       }
@@ -472,7 +463,7 @@ struct SLPGraphNode {
       if (!ip)
         return nullptr;
 
-      Operation *next = nextOp(ip);
+      Operation *next = ip->getNextNode();
       if (next->getBlock() == ret->getBlock() && ret->isBeforeInBlock(next))
         ret = next;
     }
