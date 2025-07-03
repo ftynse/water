@@ -528,10 +528,9 @@ public:
     return roots;
   }
 
-  /// Get the node associated with an operation
+  /// Get the node associated with an operation or nullptr
   SLPGraphNode *getNodeForOp(Operation *op) const {
-    auto it = opToNode.find(op);
-    return it != opToNode.end() ? it->second : nullptr;
+    return opToNode.lookup(op);
   }
 
   /// Topologically sort the nodes in the graph
