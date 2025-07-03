@@ -429,6 +429,8 @@ struct SLPGraphNode {
     return ops.front();
   }
 
+  auto getNonRootOps() const { return llvm::drop_begin(ops); }
+
   /// Get the suitable insertion point for the new vectorized op.
   /// This method is trying to take into account operands insertions points too
   /// to satisfy dominance relations.
@@ -440,7 +442,7 @@ struct SLPGraphNode {
     // Find the toplogically first node, which is not nessesary the first in the
     // `ops` as `ops` are sorted by their position in vector.
     Operation *ret = op();
-    for (Operation *op : ArrayRef(ops).drop_front()) {
+    for (Operation *op : getNonRootOps()) {
       if (op->isBeforeInBlock(ret))
         ret = op;
     }
@@ -879,7 +881,7 @@ static SLPGraph buildSLPGraph(ArrayRef<MemoryOpGroup> rootGroups) {
 
     SmallVector<Operation *> currentOps;
     currentOps.emplace_back(user);
-    for (Operation *op : ArrayRef(node->ops).drop_front()) {
+    for (Operation *op : node->getNonRootOps()) {
       Operation *found = nullptr;
       for (OpOperand &opUse : op->getUses()) {
         if (opUse.getOperandNumber() != use.getOperandNumber())
@@ -936,7 +938,7 @@ static SLPGraph buildSLPGraph(ArrayRef<MemoryOpGroup> rootGroups) {
 
       Value vector = extractOp.getVector();
       int64_t currentIndex = *extractIndex;
-      for (Operation *op : ArrayRef(node->ops).drop_front()) {
+      for (Operation *op : node->getNonRootOps()) {
         auto otherOp = op->getOperand(index).getDefiningOp<vector::ExtractOp>();
         if (!otherOp || otherOp.getVector() != vector)
           break;
@@ -953,7 +955,7 @@ static SLPGraph buildSLPGraph(ArrayRef<MemoryOpGroup> rootGroups) {
                         << "\n");
 
       currentOps.emplace_back(srcOp);
-      for (Operation *op : ArrayRef(node->ops).drop_front()) {
+      for (Operation *op : node->getNonRootOps()) {
         Operation *otherOp = op->getOperand(index).getDefiningOp();
         if (!otherOp || !isEquivalent(otherOp, srcOp))
           break;
