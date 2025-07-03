@@ -1,6 +1,7 @@
 add_mlir_dialect_library(MLIRWaterTransforms
   AccessCheckers.cpp
   CheckStaticAssertions.cpp
+  SLPVectorizer.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${PROJECT_SOURCE_DIR}/include/water
@@ -16,6 +17,8 @@ add_mlir_dialect_library(MLIRWaterTransforms
   MLIRIR
   MLIRMemRefDialect
   MLIRPass
+  MLIRRewrite
+  MLIRTransformUtils
   MLIRVectorDialect
   MLIRWaterAnalysis
 )
