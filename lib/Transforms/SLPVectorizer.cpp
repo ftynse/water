@@ -20,6 +20,7 @@
 #include "llvm/Support/SHA1.h"
 
 #define DEBUG_TYPE "water-slp-vectorizer"
+#define DBGS() (llvm::dbgs() << "[" DEBUG_TYPE << "]: ")
 
 namespace mlir::water {
 #define GEN_PASS_DEF_WATERGREEDYSLPVECTORIZER
@@ -242,7 +243,7 @@ static bool isAdjacentAffineMapIndices(Value idx1, Value idx2, int64_t offset) {
   auto diff =
       simplifyAffineExpr(combinedMap.getResult(0), combinedMap.getNumDims(),
                          combinedMap.getNumSymbols());
-  llvm::errs() << "combinedMap: " << combinedMap << " diff: " << diff << "\n";
+
   auto diffConst = dyn_cast<AffineConstantExpr>(diff);
   return diffConst && diffConst.getValue() == offset;
 }
@@ -368,8 +369,8 @@ extractContiguousGroups(const MemoryOpGroup &group) {
       continue;
     }
 
-    LLVM_DEBUG(llvm::dbgs() << "Extracted contiguous group with "
-                            << currentGroup.opsCount() << " operations\n");
+    LLVM_DEBUG(DBGS() << "Extracted contiguous group with "
+                      << currentGroup.opsCount() << " operations\n");
   }
   return result;
 }
@@ -571,59 +572,56 @@ public:
             llvm::function_ref<bool(Type, size_t)> isValidVecType);
 
   /// Print the graph structure
-  [[maybe_unused]] void print() const {
-    llvm::dbgs() << "SLP Graph Structure:\n";
-    llvm::dbgs() << "===================\n";
+  [[maybe_unused]] void print(llvm::raw_ostream &os) const {
+    os << "SLP Graph Structure:\n";
+    os << "===================\n";
 
     // First print all roots
-    llvm::dbgs() << "Roots:\n";
+    os << "Roots:\n";
     for (const auto &node : nodes) {
       if (!node->isRoot)
         continue;
-      llvm::dbgs() << "  " << (maybeReadOp(node->op()) ? "LOAD" : "STORE")
-                   << " group with " << node->opsCount() << " operations:\n";
+      os << "  " << (maybeReadOp(node->op()) ? "LOAD" : "STORE")
+         << " group with " << node->opsCount() << " operations:\n";
       for (auto *op : node->ops) {
-        llvm::dbgs() << "    " << *op << "\n";
+        os << "    " << *op << "\n";
       }
-      llvm::dbgs() << "    Users: ";
+      os << "    Users: ";
       for (auto *user : node->users) {
-        llvm::dbgs() << "\n      Group with " << user->opsCount()
-                     << " operations:";
+        os << "\n      Group with " << user->opsCount() << " operations:";
         for (auto *op : user->ops) {
-          llvm::dbgs() << "\n        " << *op;
+          os << "\n        " << *op;
         }
       }
-      llvm::dbgs() << "\n";
+      os << "\n";
     }
 
     // Then print all non-root nodes
-    llvm::dbgs() << "\nNon-root nodes:\n";
+    os << "\nNon-root nodes:\n";
     for (const auto &node : nodes) {
       if (node->isRoot)
         continue;
-      llvm::dbgs() << "  Group with " << node->opsCount() << " operations:\n";
+      os << "  Group with " << node->opsCount() << " operations:\n";
       for (auto *op : node->ops) {
-        llvm::dbgs() << "    " << *op << "\n";
+        os << "    " << *op << "\n";
       }
-      llvm::dbgs() << "    Operands: ";
+      os << "    Operands: ";
       for (auto *operand : node->operands) {
-        llvm::dbgs() << "\n      Group with " << operand->opsCount()
-                     << " operations:";
+        os << "\n      Group with " << operand->opsCount() << " operations:";
         for (auto *op : operand->ops) {
-          llvm::dbgs() << "\n        " << *op;
+          os << "\n        " << *op;
         }
       }
-      llvm::dbgs() << "\n    Users: ";
+      os << "\n    Users: ";
       for (auto *user : node->users) {
-        llvm::dbgs() << "\n      Group with " << user->opsCount()
-                     << " operations:";
+        os << "\n      Group with " << user->opsCount() << " operations:";
         for (auto *op : user->ops) {
-          llvm::dbgs() << "\n        " << *op;
+          os << "\n        " << *op;
         }
       }
-      llvm::dbgs() << "\n";
+      os << "\n";
     }
-    llvm::dbgs() << "===================\n";
+    os << "===================\n";
   }
 
 private:
@@ -775,14 +773,14 @@ checkOpVecType(SLPGraphNode *node,
   Operation *op = node->op();
   size_t size = node->vectorSize();
   auto checkRes = [](bool res) -> bool {
-    LLVM_DEBUG(llvm::dbgs() << (res ? "true" : "false") << "\n");
+    LLVM_DEBUG(DBGS() << (res ? "true" : "false") << "\n");
     return res;
   };
 
   if (auto typeAndCount = getElementTypeAndCount(op)) {
     Type elementType = typeAndCount->first;
-    LLVM_DEBUG(llvm::dbgs() << "Checking if type " << elementType
-                            << " with size " << size << " can be vectorized: ");
+    LLVM_DEBUG(DBGS() << "Checking if type " << elementType << " with size "
+                      << size << " can be vectorized: ");
     return checkRes(isValidVecType(elementType, size));
   }
 
@@ -790,9 +788,8 @@ checkOpVecType(SLPGraphNode *node,
     for (auto type :
          llvm::concat<Type>(op->getResultTypes(), op->getOperandTypes())) {
       Type elementType = getElementTypeOrSelf(type);
-      LLVM_DEBUG(llvm::dbgs()
-                 << "Checking if type " << elementType << " with size " << size
-                 << " can be vectorized: ");
+      LLVM_DEBUG(DBGS() << "Checking if type " << elementType << " with size "
+                        << size << " can be vectorized: ");
       if (!checkRes(isValidVecType(elementType, size)))
         return false;
     }
@@ -801,12 +798,12 @@ checkOpVecType(SLPGraphNode *node,
 
   if (auto extract = dyn_cast<vector::ExtractOp>(op)) {
     Type type = extract.getResult().getType();
-    LLVM_DEBUG(llvm::dbgs() << "Checking if type " << type << " with size "
-                            << size << " can be vectorized: ");
+    LLVM_DEBUG(DBGS() << "Checking if type " << type << " with size " << size
+                      << " can be vectorized: ");
     return checkRes(isValidVecType(type, size));
   }
 
-  LLVM_DEBUG(llvm::dbgs() << "Unsupported op " << op->getName() << "\n");
+  LLVM_DEBUG(DBGS() << "Unsupported op " << op->getName() << "\n");
   return false;
 }
 
@@ -844,8 +841,8 @@ static SLPGraph buildSLPGraph(ArrayRef<MemoryOpGroup> rootGroups) {
   if (rootGroups.empty())
     return SLPGraph();
 
-  LLVM_DEBUG(llvm::dbgs() << "=== Building SLP graph from " << rootGroups.size()
-                          << " root groups ===\n");
+  LLVM_DEBUG(DBGS() << "=== Building SLP graph from " << rootGroups.size()
+                    << " root groups ===\n");
   SLPGraph graph;
 
   SmallVector<SLPGraphNode *> worklist;
@@ -856,9 +853,9 @@ static SLPGraph buildSLPGraph(ArrayRef<MemoryOpGroup> rootGroups) {
     worklist.push_back(node);
 
     LLVM_DEBUG({
-      llvm::dbgs() << "Created root group node with " << node->opsCount()
-                   << " operations of type "
-                   << (group.isLoadGroup() ? "Load" : "Store") << "\n";
+      DBGS() << "Created root group node with " << node->opsCount()
+             << " operations of type "
+             << (group.isLoadGroup() ? "Load" : "Store") << "\n";
     });
   }
 
@@ -869,8 +866,8 @@ static SLPGraph buildSLPGraph(ArrayRef<MemoryOpGroup> rootGroups) {
     Operation *user = use.getOwner();
     auto *existingNode = graph.getNodeForOp(user);
     if (existingNode) {
-      LLVM_DEBUG(llvm::dbgs() << "  Adding edge from " << node->op()->getName()
-                              << " to " << user->getName() << "\n");
+      LLVM_DEBUG(DBGS() << "  Adding edge from " << node->op()->getName()
+                        << " to " << user->getName() << "\n");
       graph.addEdge(node, existingNode);
       return;
     }
@@ -921,17 +918,16 @@ static SLPGraph buildSLPGraph(ArrayRef<MemoryOpGroup> rootGroups) {
 
     auto *existingNode = graph.getNodeForOp(srcOp);
     if (existingNode) {
-      LLVM_DEBUG(llvm::dbgs() << "  Adding edge from " << srcOp->getName()
-                              << " to " << node->op()->getName() << "\n");
+      LLVM_DEBUG(DBGS() << "  Adding edge from " << srcOp->getName() << " to "
+                        << node->op()->getName() << "\n");
       graph.addEdge(existingNode, node);
       return;
     }
 
     SmallVector<Operation *> currentOps;
     if (auto extractOp = dyn_cast<vector::ExtractOp>(srcOp)) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "  Processing vector.extract op with index "
-                 << getExtractIndex(extractOp).value_or(-1) << "\n");
+      LLVM_DEBUG(DBGS() << "  Processing vector.extract op with index "
+                        << getExtractIndex(extractOp).value_or(-1) << "\n");
       currentOps.push_back(extractOp);
 
       std::optional<int64_t> extractIndex = getExtractIndex(extractOp);
@@ -953,8 +949,8 @@ static SLPGraph buildSLPGraph(ArrayRef<MemoryOpGroup> rootGroups) {
         ++currentIndex;
       }
     } else if (isVectorizable(srcOp, node->elementsCount)) {
-      LLVM_DEBUG(llvm::dbgs() << "  Processing vectorizable op "
-                              << srcOp->getName() << "\n");
+      LLVM_DEBUG(DBGS() << "  Processing vectorizable op " << srcOp->getName()
+                        << "\n");
 
       currentOps.emplace_back(srcOp);
       for (Operation *op : ArrayRef(node->ops).drop_front()) {
@@ -965,8 +961,7 @@ static SLPGraph buildSLPGraph(ArrayRef<MemoryOpGroup> rootGroups) {
         currentOps.push_back(otherOp);
       }
     } else {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "  Unsupported op " << srcOp->getName() << "\n");
+      LLVM_DEBUG(DBGS() << "  Unsupported op " << srcOp->getName() << "\n");
       return;
     }
 
@@ -983,9 +978,9 @@ static SLPGraph buildSLPGraph(ArrayRef<MemoryOpGroup> rootGroups) {
 
   while (!worklist.empty()) {
     SLPGraphNode *node = worklist.pop_back_val();
-    LLVM_DEBUG(llvm::dbgs()
-               << "Processing node with " << node->opsCount()
-               << " operations, first op: " << node->op()->getName() << "\n");
+    LLVM_DEBUG(DBGS() << "Processing node with " << node->opsCount()
+                      << " operations, first op: " << node->op()->getName()
+                      << "\n");
 
     Operation *op = node->op();
     for (OpOperand &use : op->getUses())
@@ -1004,21 +999,21 @@ SLPGraph::vectorize(IRRewriter &rewriter,
   if (nodes.empty())
     return 0;
 
-  LLVM_DEBUG(llvm::dbgs() << "Vectorizing SLP graph with " << nodes.size()
-                          << " nodes\n");
+  LLVM_DEBUG(DBGS() << "Vectorizing SLP graph with " << nodes.size()
+                    << " nodes\n");
 
   // Get topologically sorted nodes
   SmallVector<SLPGraphNode *> sortedNodes = topologicalSort();
   if (sortedNodes.empty()) {
-    LLVM_DEBUG(llvm::dbgs() << "Failed to topologically sort nodes\n");
+    LLVM_DEBUG(DBGS() << "Failed to topologically sort nodes\n");
     return failure();
   }
 
   LLVM_DEBUG({
-    llvm::dbgs() << "Topologically sorted nodes:\n";
+    DBGS() << "Topologically sorted nodes:\n";
     for (auto *node : sortedNodes) {
-      llvm::dbgs() << "  Node with " << node->opsCount()
-                   << " operations: " << node->op()->getName() << "\n";
+      DBGS() << "  Node with " << node->opsCount()
+             << " operations: " << node->op()->getName() << "\n";
     }
   });
 
@@ -1039,9 +1034,9 @@ SLPGraph::vectorize(IRRewriter &rewriter,
       size = std::min(size, operand->opsCount());
 
     if (size < node->opsCount()) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "Size mismatch, resizing node with " << node->opsCount()
-                 << " operations to " << size << "\n");
+      LLVM_DEBUG(DBGS() << "Size mismatch, resizing node with "
+                        << node->opsCount() << " operations to " << size
+                        << "\n");
       node->ops.resize(size);
     }
 
@@ -1049,8 +1044,8 @@ SLPGraph::vectorize(IRRewriter &rewriter,
       if (checkOpVecType(node, isValidVecType))
         break;
 
-      LLVM_DEBUG(llvm::dbgs() << "No a valid vector type, popping back op: "
-                              << node->ops.back()->getName() << "\n");
+      LLVM_DEBUG(DBGS() << "No a valid vector type, popping back op: "
+                        << node->ops.back()->getName() << "\n");
       node->ops.pop_back();
     }
   }
@@ -1060,9 +1055,8 @@ SLPGraph::vectorize(IRRewriter &rewriter,
   IRMapping mapping;
   for (auto *node : sortedNodes) {
     LLVM_DEBUG({
-      llvm::dbgs() << "Processing node with " << node->opsCount()
-                   << " operations\n";
-      llvm::dbgs() << "  First op: " << *node->op() << "\n";
+      DBGS() << "Processing node with " << node->opsCount() << " operations\n";
+      DBGS() << "  First op: " << *node->op() << "\n";
     });
 
     // `op` is the node with the smallest index in vector and not the
@@ -1072,7 +1066,7 @@ SLPGraph::vectorize(IRRewriter &rewriter,
     if (!ip)
       return op->emitError("no insertion point found for node");
 
-    LLVM_DEBUG(llvm::dbgs() << "  Insertion point: " << *ip << "\n");
+    LLVM_DEBUG(DBGS() << "  Insertion point: " << *ip << "\n");
 
     rewriter.setInsertionPoint(ip);
     int64_t numElements = node->vectorSize();
@@ -1223,18 +1217,18 @@ SLPGraph::vectorize(IRRewriter &rewriter,
     }
   }
 
-  LLVM_DEBUG(llvm::dbgs() << "Erasing original ops\n");
+  LLVM_DEBUG(DBGS() << "Erasing original ops\n");
 
   // As all nodes were cloned, we need to erase the original ops in reverse
   // topo order to avoid invalidation users.
   for (auto *node : llvm::reverse(sortedNodes)) {
     for (Operation *op : node->ops) {
-      LLVM_DEBUG(llvm::dbgs() << "Erasing op: " << *op << "\n");
+      LLVM_DEBUG(DBGS() << "Erasing op: " << *op << "\n");
       rewriter.eraseOp(op);
     }
   }
 
-  LLVM_DEBUG(llvm::dbgs() << "Vectorization completed successfully\n");
+  LLVM_DEBUG(DBGS() << "Vectorization completed successfully\n");
   return sortedNodes.size();
 }
 
@@ -1243,8 +1237,8 @@ SLPGraph::vectorize(IRRewriter &rewriter,
 static FailureOr<size_t>
 tryToVectorizeInBlock(Block &block,
                       llvm::function_ref<bool(Type, size_t)> isValidVecType) {
-  LLVM_DEBUG(llvm::dbgs() << "Processing block in operation: "
-                          << block.getParentOp()->getName() << "\n");
+  LLVM_DEBUG(DBGS() << "Processing block in operation: "
+                    << block.getParentOp()->getName() << "\n");
 
   // Collect memory operation groups
   SmallVector<MemoryOpGroup> groups = collectMemoryOpGroups(block);
@@ -1255,12 +1249,11 @@ tryToVectorizeInBlock(Block &block,
     SmallVector<MemoryOpGroup> contiguousGroups =
         extractContiguousGroups(group);
     LLVM_DEBUG({
-      llvm::dbgs() << "Found " << contiguousGroups.size()
-                   << " contiguous groups in "
-                   << (group.isLoadGroup() ? "load" : "store") << " group\n";
+      DBGS() << "Found " << contiguousGroups.size() << " contiguous groups in "
+             << (group.isLoadGroup() ? "load" : "store") << " group\n";
       for (const auto &contigGroup : contiguousGroups) {
-        llvm::dbgs() << "  Contiguous group with " << contigGroup.opsCount()
-                     << " operations\n";
+        DBGS() << "  Contiguous group with " << contigGroup.opsCount()
+               << " operations\n";
       }
     });
     rootGroups.append(contiguousGroups);
@@ -1268,14 +1261,14 @@ tryToVectorizeInBlock(Block &block,
 
   // Build the SLP graph from root groups
   SLPGraph graph = buildSLPGraph(rootGroups);
-  LLVM_DEBUG(graph.print());
+  LLVM_DEBUG(graph.print(llvm::dbgs()));
 
   // Vectorize the graph
   IRRewriter rewriter(block.getParentOp()->getContext());
   FailureOr<size_t> numNodesVectorized =
       graph.vectorize(rewriter, isValidVecType);
   if (failed(numNodesVectorized))
-    LLVM_DEBUG(llvm::dbgs() << "Failed to vectorize graph\n");
+    LLVM_DEBUG(DBGS() << "Failed to vectorize graph\n");
 
   return numNodesVectorized;
 }
