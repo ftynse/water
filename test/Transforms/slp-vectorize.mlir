@@ -202,6 +202,37 @@ func.func @read_write_affine_apply_and_val(%arg0: memref<8xi32>, %arg1: memref<8
 }
 
 
+#map7 = affine_map<()[s0, s1] -> (s1 * s0)>
+#map8 = affine_map<()[s0, s1] -> (s0 * s1 + 1)>
+#map9 = affine_map<()[s0, s1] -> (s1 * s0 + 2)>
+#map10 = affine_map<()[s0, s1] -> (s0 * s1 + 3)>
+
+// CHECK-LABEL: func @read_write_affine_apply_arg_order
+//  CHECK-SAME: (%[[ARG0:.*]]: memref<8xi32>, %[[ARG1:.*]]: memref<8xi32>, %[[ARG2:.*]]: index, %[[ARG3:.*]]: index)
+func.func @read_write_affine_apply_arg_order(%arg0: memref<8xi32>, %arg1: memref<8xi32>, %arg2: index, %arg3: index) {
+  // CHECK:     %[[IDX:.*]] = affine.apply #{{.*}}()[%[[ARG2]], %[[ARG3]]]
+  // CHECK:     %[[RES:.*]] = vector.load %[[ARG0]][%[[IDX]]] : memref<8xi32>, vector<4xi32>
+  // CHECK:     vector.store %[[RES]], %[[ARG1]][%[[IDX]]] : memref<8xi32>, vector<4xi32>
+
+  %ind0 = affine.apply #map7()[%arg2, %arg3]
+  %ind1 = affine.apply #map8()[%arg3, %arg2]
+  %ind2 = affine.apply #map9()[%arg2, %arg3]
+  %ind3 = affine.apply #map10()[%arg3, %arg2]
+
+  %0 = memref.load %arg0[%ind0] : memref<8xi32>
+  %1 = memref.load %arg0[%ind1] : memref<8xi32>
+  %2 = memref.load %arg0[%ind2] : memref<8xi32>
+  %3 = memref.load %arg0[%ind3] : memref<8xi32>
+
+  memref.store %0, %arg1[%ind0] : memref<8xi32>
+  memref.store %1, %arg1[%ind1] : memref<8xi32>
+  memref.store %2, %arg1[%ind2] : memref<8xi32>
+  memref.store %3, %arg1[%ind3] : memref<8xi32>
+
+  return
+}
+
+
 // CHECK-LABEL: func @read_read_add
 //  CHECK-SAME: (%[[ARG0:.*]]: memref<8xi32>, %[[ARG1:.*]]: memref<8xi32>)
 func.func @read_read_add(%arg0: memref<8xi32>, %arg1: memref<8xi32>) -> (i32, i32, i32, i32) {

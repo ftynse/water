@@ -215,10 +215,11 @@ static ValueRange getIndices(Operation *op) {
 }
 
 static bool isAdjacentAffineMapIndices(Value idx1, Value idx2, int64_t offset) {
-  auto(applyOp2) = idx2.getDefiningOp<affine::AffineApplyOp>();
+  auto applyOp2 = idx2.getDefiningOp<affine::AffineApplyOp>();
   if (!applyOp2)
     return false;
 
+  // Check idx2 is expr(idx1 + offset).
   AffineExpr expr2 = applyOp2.getAffineMap().getResult(0);
   if (applyOp2.getOperands() == ValueRange(idx1) &&
       expr2 == (getAffineSymbolExpr(0, expr2.getContext()) + offset))
@@ -228,13 +229,21 @@ static bool isAdjacentAffineMapIndices(Value idx1, Value idx2, int64_t offset) {
   if (!applyOp1)
     return false;
 
-  if (applyOp1.getOperands() != applyOp2.getOperands())
-    return false;
-
+  // Construct expr(expr2 - expr1) and check if result is constant and equal to
+  // `offset`.
   AffineExpr expr1 = applyOp1.getAffineMap().getResult(0);
-  auto diff =
-      simplifyAffineExpr(expr2 - expr1, 0, applyOp1.getOperands().size());
+  expr2 =
+      expr2.shiftSymbols(applyOp2.getNumOperands(), applyOp1.getNumOperands());
 
+  SmallVector<Value> operands(applyOp1.getOperands());
+  llvm::append_range(operands, applyOp2.getOperands());
+  auto combinedMap = AffineMap::get(
+      /*dimCount=*/0, /*symbolCount=*/operands.size(), expr2 - expr1);
+  affine::canonicalizeMapAndOperands(&combinedMap, &operands);
+  auto diff =
+      simplifyAffineExpr(combinedMap.getResult(0), combinedMap.getNumDims(),
+                         combinedMap.getNumSymbols());
+  llvm::errs() << "combinedMap: " << combinedMap << " diff: " << diff << "\n";
   auto diffConst = dyn_cast<AffineConstantExpr>(diff);
   return diffConst && diffConst.getValue() == offset;
 }
