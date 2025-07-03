@@ -85,7 +85,7 @@ jobs:
           popd
 
   test_linux:
-    name: "Linux: Run water tests"
+    name: "Linux: (SHARED_LIBS: ${{ matrix.shared_libs }}) Run water tests"
     strategy:
       fail-fast: false
       matrix:
