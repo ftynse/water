@@ -443,10 +443,12 @@ struct SLPGraphNode {
     // `ops` as `ops` are sorted by their position in vector.
     Operation *ret = op();
     for (Operation *op : getNonRootOps()) {
+      // We rely on the fact all ops in the node are in the same block.
       if (op->isBeforeInBlock(ret))
         ret = op;
     }
 
+    // Move insertion point after all operands.
     for (Operation *op : ops) {
       for (Value opOperand : op->getOperands()) {
         Operation *defOp = opOperand.getDefiningOp();
@@ -1149,6 +1151,8 @@ SLPGraph::vectorize(IRRewriter &rewriter,
     };
 
     auto getOperandIndex = [&](Value target) -> unsigned {
+      // TODO: this code relies on the fact masked load/store ops use operands
+      // only once.
       for (OpOperand &operand : op->getOpOperands())
         if (operand.get() == target)
           return static_cast<unsigned>(operand.getOperandNumber());
