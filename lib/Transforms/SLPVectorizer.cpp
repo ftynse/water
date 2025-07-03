@@ -410,13 +410,6 @@ isVectorizable(Operation *op,
 
 /// A node in the SLP graph representing a group of vectorizable operations
 struct SLPGraphNode {
-  SmallVector<Operation *> ops;
-  SmallVector<SLPGraphNode *> users;
-  SmallVector<SLPGraphNode *> operands;
-  Operation *insertionPoint = nullptr;
-  int64_t elementsCount = 0;
-  bool isRoot = false;
-
   SLPGraphNode() = default;
   SLPGraphNode(ArrayRef<Operation *> operations)
       : ops(operations.begin(), operations.end()) {}
@@ -428,6 +421,8 @@ struct SLPGraphNode {
     assert(!ops.empty() && "empty ops");
     return ops.front();
   }
+
+  int64_t getElementsCount() const { return elementsCount; }
 
   auto getNonRootOps() const { return llvm::drop_begin(ops); }
 
@@ -448,7 +443,7 @@ struct SLPGraphNode {
         ret = op;
     }
 
-    // Move insertion point after all operands.
+    // Move insertion point after all non-vectorized operands.
     for (Operation *op : ops) {
       for (Value opOperand : op->getOperands()) {
         Operation *defOp = opOperand.getDefiningOp();
@@ -461,8 +456,7 @@ struct SLPGraphNode {
       }
     }
 
-    // Try to adjust insertion point to satisfy dominance relations with
-    // operands.
+    // Move insertion point after all vectorized operands.
     for (SLPGraphNode *operand : operands) {
       Operation *ip = operand->getInsertionPoint();
       if (!ip)
@@ -476,6 +470,16 @@ struct SLPGraphNode {
     insertionPoint = ret;
     return ret;
   }
+
+private:
+  friend class SLPGraph;
+
+  SmallVector<Operation *> ops;
+  SmallVector<SLPGraphNode *> users;
+  SmallVector<SLPGraphNode *> operands;
+  Operation *insertionPoint = nullptr;
+  int64_t elementsCount = 0;
+  bool isRoot = false;
 };
 
 /// A graph of vectorizable operations
@@ -876,7 +880,7 @@ static SLPGraph buildSLPGraph(ArrayRef<MemoryOpGroup> rootGroups) {
       return;
     }
 
-    if (!isVectorizable(user, node->elementsCount))
+    if (!isVectorizable(user, node->getElementsCount()))
       return;
 
     Fingerprint expectedFingerprint = fingerprints.getFingerprint(user);
@@ -906,7 +910,7 @@ static SLPGraph buildSLPGraph(ArrayRef<MemoryOpGroup> rootGroups) {
     if (currentOps.size() == 1)
       return;
 
-    auto *newNode = graph.addNode(currentOps, node->elementsCount);
+    auto *newNode = graph.addNode(currentOps, node->getElementsCount());
     graph.addEdge(node, newNode);
     for (Operation *op : currentOps)
       fingerprints.invalidate(op);
@@ -952,7 +956,7 @@ static SLPGraph buildSLPGraph(ArrayRef<MemoryOpGroup> rootGroups) {
         currentOps.push_back(otherOp);
         ++currentIndex;
       }
-    } else if (isVectorizable(srcOp, node->elementsCount)) {
+    } else if (isVectorizable(srcOp, node->getElementsCount())) {
       LLVM_DEBUG(DBGS() << "  Processing vectorizable op " << srcOp->getName()
                         << "\n");
 
@@ -972,7 +976,7 @@ static SLPGraph buildSLPGraph(ArrayRef<MemoryOpGroup> rootGroups) {
     if (currentOps.size() == 1)
       return;
 
-    auto *newNode = graph.addNode(currentOps, node->elementsCount);
+    auto *newNode = graph.addNode(currentOps, node->getElementsCount());
     graph.addEdge(newNode, node);
     for (Operation *op : currentOps)
       fingerprints.invalidate(op);
