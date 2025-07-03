@@ -17,6 +17,8 @@ add_mlir_dialect_library(MLIRWaterTransforms
   MLIRIR
   MLIRMemRefDialect
   MLIRPass
+  MLIRRewrite
+  MLIRTransformUtils
   MLIRVectorDialect
   MLIRWaterAnalysis
 )
