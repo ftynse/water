@@ -9,7 +9,7 @@ import os
 
 def find_binary(name: str) -> str:
     this_path = os.path.dirname(__file__)
-    tool_path = os.path.join(this_path, name)
+    tool_path = os.path.join(this_path, "bin", name)
     assert os.path.isfile(tool_path) and os.access(
         tool_path, os.X_OK
     ), f"Could not find the {name} executable in package."

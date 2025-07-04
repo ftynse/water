@@ -14,3 +14,5 @@ llvm_update_compile_flags(water-opt)
 target_link_libraries(water-opt PRIVATE ${LIBS})
 
 mlir_check_all_link_libraries(water-opt)
+
+install(TARGETS water-opt)
