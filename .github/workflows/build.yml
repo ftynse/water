@@ -200,7 +200,6 @@ jobs:
       - name: Run python tests
         run: |
           cd ${GITHUB_WORKSPACE}/build_tools/wheel
-          export WATER_MLIR_DIR=${GITHUB_WORKSPACE}/llvm-mlir/_mlir_install/lib/cmake/mlir
           pytest -n auto tests/
 
       - name: Build python package
