@@ -60,9 +60,6 @@ class CMakeBuild(build_ext):
         ext_fullpath = Path.cwd() / self.get_ext_fullpath(ext.name)
         extdir = ext_fullpath.parent.resolve() / "water_mlir"
 
-        print(f"extdir: {extdir}")
-        # breakpoint()
-
         # Configure CMake
         cmake_args = [
             "-G Ninja",
