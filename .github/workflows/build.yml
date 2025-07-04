@@ -191,8 +191,20 @@ jobs:
             llvm-mlir/_mlir_install/**
           key: ${{ runner.os }}-build-llvm-${{ env.LLVM_CACHE_NUMBER }}-${{ env.LLVM_SHA }}
 
-      - name: Build water wheel
+      - name: Install editable python package
         run: |
           cd ${GITHUB_WORKSPACE}/build_tools/wheel
           export WATER_MLIR_DIR=${GITHUB_WORKSPACE}/llvm-mlir/_mlir_install/lib/cmake/mlir
-          python -m pip wheel .
+          pip install -e .
+
+      - name: Run python tests
+        run: |
+          cd ${GITHUB_WORKSPACE}/build_tools/wheel
+          export WATER_MLIR_DIR=${GITHUB_WORKSPACE}/llvm-mlir/_mlir_install/lib/cmake/mlir
+          pytest -n auto tests/
+
+      - name: Build python package
+        run: |
+          cd ${GITHUB_WORKSPACE}/build_tools/wheel
+          export WATER_MLIR_DIR=${GITHUB_WORKSPACE}/llvm-mlir/_mlir_install/lib/cmake/mlir
+          pip wheel .

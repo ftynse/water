@@ -73,9 +73,6 @@ pip install --force-reinstall *.whl
 Note that force-reinstallation flag without which the wheel may not be
 reinstalled without bumping the version.
 
-The build mode is controlled by the `WATER_BUILD_TYPE` environment variable
-whose content is forward to cmake.
-
 An editable build allows you to modify the python code and have the changes
 immediately reflected without reinstalling the package. This is useful during
 development. To install an editable build:
