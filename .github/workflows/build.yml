@@ -153,6 +153,8 @@ jobs:
     runs-on: ${{ matrix.name }}
     timeout-minutes: 60
     needs: build_llvm_linux
+    env:
+      VENV_DIR: ${{ github.workspace }}/.water-venv
 
     steps:
       - name: Checkout repo
