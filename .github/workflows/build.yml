@@ -202,7 +202,7 @@ jobs:
       - name: Run python tests
         run: |
           cd ${GITHUB_WORKSPACE}/build_tools/wheel
-          pytest -n auto tests/
+          pytest -n auto --capture=tee-sys -vv --durations=100 --timeout=300 tests/
 
       - name: Build python package
         run: |
