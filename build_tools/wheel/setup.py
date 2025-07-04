@@ -20,7 +20,7 @@ class CMakeExtension(Extension):
         print(f"sourcedir: {self.sourcedir}")
 
 
-def invoke_cmake(*args, cwd: str):
+def invoke_cmake(*args, cwd=None):
     subprocess.check_call(["cmake", *args], cwd=cwd)
 
 
@@ -32,7 +32,7 @@ class CMakeBuild(build_ext):
     def build_cmake(self, ext):
         # Ensure CMake is available
         try:
-            subprocess.check_output(["cmake", "--version"])
+            invoke_cmake("--version")
         except OSError:
             raise RuntimeError(
                 "CMake must be installed to build the following extensions: "
