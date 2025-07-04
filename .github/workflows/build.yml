@@ -179,7 +179,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y ninja-build cmake clang lld
-          pip install lit pytest pytest-xdist
+          pip install lit pytest pytest-xdist pytest-timeout
 
       - name: Setup Cache Vars
         run: |
