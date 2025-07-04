@@ -85,12 +85,13 @@ jobs:
           popd
 
   test_linux:
-    name: "Linux: (SHARED_LIBS: ${{ matrix.shared_libs }}) Run water tests"
+    name: "${{ matrix.name }} :: SHARED_LIBS ${{ matrix.shared_libs }} :: Run water tests"
     strategy:
       fail-fast: false
       matrix:
+        name: ["ubuntu-22.04"]
         shared_libs: ["ON", "OFF"]
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.name }}
     timeout-minutes: 60
     needs: build_llvm_linux
 
@@ -142,9 +143,14 @@ jobs:
           cmake --build . --target check-water
 
 
-  test_linux_wheel:
-    name: "Linux: test water wheel"
-    runs-on: ubuntu-22.04
+  test_linux_python:
+    name: "${{ matrix.name }} :: ${{ matrix.version }} :: Test water python package"
+    strategy:
+      fail-fast: false
+      matrix:
+        name: ["ubuntu-22.04"]
+        version: ["3.10", "3.11", "3.12"]
+    runs-on: ${{ matrix.name }}
     timeout-minutes: 60
     needs: build_llvm_linux
 
@@ -154,11 +160,24 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: "Setting up Python"
+        id: setup_python
+        uses: actions/setup-python@v5.6.0
+        with:
+          python-version: ${{matrix.version}}
+
+      - name: Create Python venv
+        run: |
+          python -m venv ${VENV_DIR}
+          source ${VENV_DIR}/bin/activate
+          echo VIRTUAL_ENV=$VIRTUAL_ENV >> "$GITHUB_ENV"
+          echo "$VENV_DIR/bin" >> "$GITHUB_PATH"
+
       - name: Setup env
         run: |
           sudo apt update
           sudo apt install -y ninja-build cmake clang lld
-          pip install lit
+          pip install lit pytest pytest-xdist
 
       - name: Setup Cache Vars
         run: |
