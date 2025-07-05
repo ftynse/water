@@ -51,6 +51,8 @@ class CMakeBuild(build_ext):
                 f"WATER_MLIR_DIR={mlir_dir} does not point to the MLIR cmake configuration"
             )
 
+        build_type = os.environ.get("WATER_BUILD_TYPE", "Release")
+
         # Create build directory
         build_dir = os.path.abspath(os.path.join(self.build_temp, ext.name))
         shutil.rmtree(build_dir, ignore_errors=True)
@@ -67,7 +69,7 @@ class CMakeBuild(build_ext):
             f"-DMLIR_DIR={mlir_dir}",
             "-DBUILD_SHARED_LIBS=OFF",
             f"-DCMAKE_INSTALL_PREFIX={extdir}{os.sep}",
-            f"-DCMAKE_BUILD_TYPE={'Debug' if self.debug else 'Release'}",
+            f"-DCMAKE_BUILD_TYPE={build_type}",
         ]
         invoke_cmake(ext.sourcedir, *cmake_args, cwd=build_dir)
 
