@@ -5,3 +5,11 @@ build/
 *.egg-info/
 *.whl
 *.swp
+
+*__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.dylib
+*.dll

@@ -85,12 +85,13 @@ jobs:
           popd
 
   test_linux:
-    name: "Linux: (SHARED_LIBS: ${{ matrix.shared_libs }}) Run water tests"
+    name: "${{ matrix.name }} :: SHARED_LIBS ${{ matrix.shared_libs }} :: Run water tests"
     strategy:
       fail-fast: false
       matrix:
+        name: ["ubuntu-22.04"]
         shared_libs: ["ON", "OFF"]
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.name }}
     timeout-minutes: 60
     needs: build_llvm_linux
 
@@ -142,11 +143,18 @@ jobs:
           cmake --build . --target check-water
 
 
-  test_linux_wheel:
-    name: "Linux: test water wheel"
-    runs-on: ubuntu-22.04
+  test_linux_python:
+    name: "${{ matrix.name }} :: ${{ matrix.version }} :: Test water python package"
+    strategy:
+      fail-fast: false
+      matrix:
+        name: ["ubuntu-22.04"]
+        version: ["3.10", "3.11", "3.12"]
+    runs-on: ${{ matrix.name }}
     timeout-minutes: 60
     needs: build_llvm_linux
+    env:
+      VENV_DIR: ${{ github.workspace }}/.water-venv
 
     steps:
       - name: Checkout repo
@@ -154,11 +162,24 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: "Setting up Python"
+        id: setup_python
+        uses: actions/setup-python@v5.6.0
+        with:
+          python-version: ${{matrix.version}}
+
+      - name: Create Python venv
+        run: |
+          python -m venv ${VENV_DIR}
+          source ${VENV_DIR}/bin/activate
+          echo VIRTUAL_ENV=$VIRTUAL_ENV >> "$GITHUB_ENV"
+          echo "$VENV_DIR/bin" >> "$GITHUB_PATH"
+
       - name: Setup env
         run: |
           sudo apt update
           sudo apt install -y ninja-build cmake clang lld
-          pip install lit
+          pip install lit pytest pytest-xdist pytest-timeout
 
       - name: Setup Cache Vars
         run: |
@@ -172,8 +193,19 @@ jobs:
             llvm-mlir/_mlir_install/**
           key: ${{ runner.os }}-build-llvm-${{ env.LLVM_CACHE_NUMBER }}-${{ env.LLVM_SHA }}
 
-      - name: Build water wheel
+      - name: Install editable python package
         run: |
           cd ${GITHUB_WORKSPACE}/build_tools/wheel
           export WATER_MLIR_DIR=${GITHUB_WORKSPACE}/llvm-mlir/_mlir_install/lib/cmake/mlir
-          python -m pip wheel .
+          pip install -e .
+
+      - name: Run python tests
+        run: |
+          cd ${GITHUB_WORKSPACE}/build_tools/wheel
+          pytest -n auto --capture=tee-sys -vv --durations=100 --timeout=300 tests/
+
+      - name: Build python package
+        run: |
+          cd ${GITHUB_WORKSPACE}/build_tools/wheel
+          export WATER_MLIR_DIR=${GITHUB_WORKSPACE}/llvm-mlir/_mlir_install/lib/cmake/mlir
+          pip wheel .
