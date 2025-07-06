@@ -97,6 +97,7 @@ class CMakeBuild(build_ext):
                 "-DBUILD_SHARED_LIBS=OFF",
                 "-DLLVM_ENABLE_ASSERTIONS=ON",
                 "-DLLVM_ENABLE_ZSTD=OFF",
+                "-DLLVM_INSTALL_UTILS=ON",
                 "-DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON",
                 f"-DCMAKE_INSTALL_PREFIX={llvm_install_dir}{os.sep}",
                 f"-DCMAKE_BUILD_TYPE={build_type}",
