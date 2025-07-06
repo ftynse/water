@@ -45,7 +45,7 @@ class CMakeBuild(build_ext):
 
         build_llvm = bool(int(os.environ.get("WATER_BUILD_LLVM", 0)))
         if not build_llvm:
-            mlir_dir = Path(os.environ.get("WATER_MLIR_DIR", None))
+            mlir_dir = os.environ.get("WATER_MLIR_DIR", None)
             if not mlir_dir:
                 raise RuntimeError(
                     "Expected MLIR directory to be provided via the WATER_MLIR_DIR environment variable"
