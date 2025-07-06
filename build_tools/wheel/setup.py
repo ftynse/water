@@ -75,7 +75,10 @@ class CMakeBuild(build_ext):
             if not os.path.exists(llvm_dir):
                 os.makedirs(llvm_dir, exist_ok=True)
                 invoke_git(
-                    "clone", "https://github.com/llvm/llvm-project.git", cwd=llvm_dir
+                    "clone",
+                    "https://github.com/llvm/llvm-project.git",
+                    ".",
+                    cwd=llvm_dir,
                 )
 
             invoke_git("fetch", cwd=llvm_dir)
