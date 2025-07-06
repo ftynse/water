@@ -96,7 +96,7 @@ class CMakeBuild(build_ext):
             ]
 
             # Configure CMake
-            invoke_cmake(llvm_dir / llvm, *cmake_args, cwd=build_dir)
+            invoke_cmake(llvm_dir / "llvm", *cmake_args, cwd=build_dir)
         else:
             cmake_args = [
                 "-G Ninja",
