@@ -73,6 +73,14 @@ pip install --force-reinstall *.whl
 Note that force-reinstallation flag without which the wheel may not be
 reinstalled without bumping the version.
 
+The package build can be configured to checkout and build LLVM from source by
+setting the `WATER_BUILD_LLVM` environment variable to `1`:
+
+```sh
+cd build_tools/wheel
+WATER_BUILD_LLVM=1 python -m pip wheel .
+```
+
 The build mode is controlled by the `WATER_BUILD_TYPE` environment variable
 whose content is forward to cmake.
 
