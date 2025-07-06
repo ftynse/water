@@ -76,6 +76,8 @@ class CMakeBuild(build_ext):
             llvm_dir = source_dir / "llvm-project"
             llvm_install_dir = source_dir / "llvm-install"
             llvm_build_dir = os.path.abspath(os.path.join(self.build_temp, "llvm"))
+            shutil.rmtree(llvm_build_dir, ignore_errors=True)
+            os.makedirs(llvm_build_dir, exist_ok=True)
             llvm_sha = (source_dir / "llvm-sha.txt").read_text().strip()
             if not os.path.exists(llvm_dir):
                 os.makedirs(llvm_dir, exist_ok=True)
