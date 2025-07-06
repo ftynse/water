@@ -85,7 +85,6 @@ class CMakeBuild(build_ext):
             invoke_git("checkout", llvm_sha, cwd=llvm_dir)
             cmake_args = [
                 "-G Ninja",
-                f"-DLLVM_SRC_DIR={llvm_dir}/llvm",
                 "-DLLVM_TARGETS_TO_BUILD=host",
                 "-DLLVM_ENABLE_PROJECTS=mlir",
                 "-DLLVM_EXTERNAL_PROJECTS=water",
@@ -96,6 +95,8 @@ class CMakeBuild(build_ext):
                 f"-DCMAKE_BUILD_TYPE={build_type}",
             ]
 
+            # Configure CMake
+            invoke_cmake(llvm_dir / llvm, *cmake_args, cwd=build_dir)
         else:
             cmake_args = [
                 "-G Ninja",
@@ -105,9 +106,8 @@ class CMakeBuild(build_ext):
                 f"-DCMAKE_INSTALL_PREFIX={extdir}{os.sep}",
                 f"-DCMAKE_BUILD_TYPE={build_type}",
             ]
-
-        # Configure CMake
-        invoke_cmake(source_dir, *cmake_args, cwd=build_dir)
+            # Configure CMake
+            invoke_cmake(source_dir, *cmake_args, cwd=build_dir)
 
         if not self.dry_run:
             # Build CMake project
