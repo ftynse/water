@@ -43,8 +43,8 @@ class CMakeBuild(build_ext):
                 + ", ".join(e.name for e in self.extensions)
             )
 
-        built_monolithic = bool(int(os.environ.get("WATER_BUILD_MONOLITHIC", 0)))
-        if not built_monolithic:
+        build_llvm = bool(int(os.environ.get("WATER_BUILD_LLVM", 0)))
+        if not build_llvm:
             mlir_dir = Path(os.environ.get("WATER_MLIR_DIR", None))
             if not mlir_dir:
                 raise RuntimeError(
@@ -59,6 +59,9 @@ class CMakeBuild(build_ext):
 
         build_type = os.environ.get("WATER_BUILD_TYPE", "Release")
 
+        if self.dry_run:
+            return
+
         # Create build directory
         build_dir = os.path.abspath(os.path.join(self.build_temp, ext.name))
         shutil.rmtree(build_dir, ignore_errors=True)
@@ -69,8 +72,10 @@ class CMakeBuild(build_ext):
         extdir = ext_fullpath.parent.resolve() / "water_mlir"
 
         source_dir = Path(ext.sourcedir)
-        if built_monolithic:
+        if build_llvm:
             llvm_dir = source_dir / "llvm-project"
+            llvm_install_dir = source_dir / "llvm-install"
+            llvm_build_dir = os.path.abspath(os.path.join(self.build_temp, "llvm"))
             llvm_sha = (source_dir / "llvm-sha.txt").read_text().strip()
             if not os.path.exists(llvm_dir):
                 os.makedirs(llvm_dir, exist_ok=True)
@@ -87,31 +92,31 @@ class CMakeBuild(build_ext):
                 "-G Ninja",
                 "-DLLVM_TARGETS_TO_BUILD=host",
                 "-DLLVM_ENABLE_PROJECTS=mlir",
-                "-DLLVM_EXTERNAL_PROJECTS=water",
-                f"-DLLVM_EXTERNAL_WATER_SOURCE_DIR={source_dir}",
                 "-DBUILD_SHARED_LIBS=OFF",
+                "-DLLVM_ENABLE_ASSERTIONS=ON",
+                "-DLLVM_ENABLE_ZSTD=OFF",
                 "-DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON",
-                f"-DCMAKE_INSTALL_PREFIX={extdir}{os.sep}",
+                f"-DCMAKE_INSTALL_PREFIX={llvm_install_dir}{os.sep}",
                 f"-DCMAKE_BUILD_TYPE={build_type}",
             ]
 
-            # Configure CMake
-            invoke_cmake(llvm_dir / "llvm", *cmake_args, cwd=build_dir)
-        else:
-            cmake_args = [
-                "-G Ninja",
-                f"-DMLIR_DIR={mlir_dir}",
-                "-DBUILD_SHARED_LIBS=OFF",
-                "-DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON",
-                f"-DCMAKE_INSTALL_PREFIX={extdir}{os.sep}",
-                f"-DCMAKE_BUILD_TYPE={build_type}",
-            ]
-            # Configure CMake
-            invoke_cmake(source_dir, *cmake_args, cwd=build_dir)
+            invoke_cmake(llvm_dir / "llvm", *cmake_args, cwd=llvm_build_dir)
+            invoke_cmake("--build", ".", "--target", "install", cwd=llvm_build_dir)
+            mlir_dir = llvm_install_dir / "lib" / "cmake" / "mlir"
 
-        if not self.dry_run:
-            # Build CMake project
-            invoke_cmake("--build", ".", "--target", "water-opt/install", cwd=build_dir)
+        cmake_args = [
+            "-G Ninja",
+            f"-DMLIR_DIR={mlir_dir}",
+            "-DBUILD_SHARED_LIBS=OFF",
+            "-DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON",
+            f"-DCMAKE_INSTALL_PREFIX={extdir}{os.sep}",
+            f"-DCMAKE_BUILD_TYPE={build_type}",
+        ]
+        # Configure CMake
+        invoke_cmake(source_dir, *cmake_args, cwd=build_dir)
+
+        # Build CMake project
+        invoke_cmake("--build", ".", "--target", "water-opt/install", cwd=build_dir)
 
 
 setup(
