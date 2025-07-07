@@ -1,4 +1,5 @@
 build/
+llvm-project/
 .cache/
 .venv/
 .vscode/
