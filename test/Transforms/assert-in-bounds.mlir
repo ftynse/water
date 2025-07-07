@@ -417,3 +417,54 @@ func.func @dynamic_bound(%lb: index, %ub: memref<index>, %step: index, %data: me
   }
   return
 }
+
+// -----
+
+// VECTOR-LABEL: @oob
+func.func @oob(%arg0: memref<256x256xf16, strided<[256, 1], offset: ?>>, %arg1: memref<256x256xf16, strided<[256, 1], offset: ?>>, %arg2: memref<256xf16, strided<[1], offset: ?>>) {
+  %c32_i32 = arith.constant 32 : i32
+  %c16_i32 = arith.constant 16 : i32
+  %c8_i32 = arith.constant 8 : i32
+  %c4_i32 = arith.constant 4 : i32
+  %c2_i32 = arith.constant 2 : i32
+  %c64_i32 = arith.constant 64 : i32
+  %c1_i32 = arith.constant 1 : i32
+  %c0 = arith.constant 0 : index
+  // VECTOR:         %[[BLOCK_ID_Y:.+]] = gpu.block_id  y upper_bound 256
+  %block_id_y = gpu.block_id  y upper_bound 256
+  // VECTOR:         %[[THREAD_ID_X:.+]] = gpu.thread_id  x upper_bound 128
+  %thread_id_x = gpu.thread_id  x upper_bound 128
+  // VECTOR:         %[[IDX_DIM1:.+]] = affine.apply {{.*}}[%[[THREAD_ID_X]]]
+  %0 = affine.apply affine_map<()[s0] -> (s0 * 4)>()[%thread_id_x]
+  // VECTOR:         %[[LOWER_BOUND_CHECK:.+]] = arith.cmpi sge, %[[IDX_DIM1]], %c0
+  // VECTOR:         %[[C3:.+]] = arith.constant 3 : index
+  // VECTOR:         %[[UPPER_BOUND:.+]] = arith.addi %0, %c3 : index
+  // VECTOR:         %[[UPPER_BOUND_CHECK:.+]] = arith.cmpi slt, %[[UPPER_BOUND]], %c256
+  // VECTOR:         %[[COND:.+]] = arith.andi %[[LOWER_BOUND_CHECK]], %[[UPPER_BOUND_CHECK]] : i1
+  // VECTOR:         cf.assert %[[COND]], "memref access out of bounds along dimension 1"
+  %1 = vector.load %arg0[%block_id_y, %0] : memref<256x256xf16, strided<[256, 1], offset: ?>>, vector<4xf16>
+  %2 = vector.load %arg1[%block_id_y, %0] : memref<256x256xf16, strided<[256, 1], offset: ?>>, vector<4xf16>
+  %3 = arith.mulf %1, %2 : vector<4xf16>
+  %4 = vector.extract %3[0] : f16 from vector<4xf16>
+  %5 = vector.extract %3[1] : f16 from vector<4xf16>
+  %6 = arith.addf %4, %5 : f16
+  %7 = vector.extract %3[2] : f16 from vector<4xf16>
+  %8 = arith.addf %6, %7 : f16
+  %9 = vector.extract %3[3] : f16 from vector<4xf16>
+  %10 = arith.addf %8, %9 : f16
+  %11 = vector.broadcast %10 : f16 to vector<1xf16>
+  %shuffleResult, %valid = gpu.shuffle  xor %11, %c1_i32, %c64_i32 : vector<1xf16>
+  %12 = arith.addf %11, %shuffleResult : vector<1xf16>
+  %shuffleResult_0, %valid_1 = gpu.shuffle  xor %12, %c2_i32, %c64_i32 : vector<1xf16>
+  %13 = arith.addf %12, %shuffleResult_0 : vector<1xf16>
+  %shuffleResult_2, %valid_3 = gpu.shuffle  xor %13, %c4_i32, %c64_i32 : vector<1xf16>
+  %14 = arith.addf %13, %shuffleResult_2 : vector<1xf16>
+  %shuffleResult_4, %valid_5 = gpu.shuffle  xor %14, %c8_i32, %c64_i32 : vector<1xf16>
+  %15 = arith.addf %14, %shuffleResult_4 : vector<1xf16>
+  %shuffleResult_6, %valid_7 = gpu.shuffle  xor %15, %c16_i32, %c64_i32 : vector<1xf16>
+  %16 = arith.addf %15, %shuffleResult_6 : vector<1xf16>
+  %shuffleResult_8, %valid_9 = gpu.shuffle  xor %16, %c32_i32, %c64_i32 : vector<1xf16>
+  %17 = arith.addf %16, %shuffleResult_8 : vector<1xf16>
+  vector.store %17, %arg2[%block_id_y] : memref<256xf16, strided<[1], offset: ?>>, vector<1xf16>
+  return
+}
