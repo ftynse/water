@@ -7,8 +7,12 @@ set(LIBS
         MLIROptLib
         MLIRWaterTransforms
         MLIRWaterTestTransforms
-        )
-add_llvm_executable(water-opt water-opt.cpp)
+)
+
+add_llvm_executable(water-opt
+        water-opt.cpp
+        WaterOptMain.cpp
+)
 
 llvm_update_compile_flags(water-opt)
 target_link_libraries(water-opt PRIVATE ${LIBS})
