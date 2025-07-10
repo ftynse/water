@@ -28,21 +28,25 @@ class MemoryBuffer;
 namespace mlir {
 class DialectRegistry;
 
+/// Register and parse command line options.
+/// - toolName is used for the header displayed by `--help`.
+/// - registry should contain all the dialects that can be parsed in the source.
+/// - return std::pair<std::string, std::string> for
+///   inputFilename and outputFilename command line option values.
+std::tuple<std::string, std::string, std::string>
+registerAndParseWaterCLIOptions(int argc, char **argv, llvm::StringRef toolName,
+                                DialectRegistry &registry);
+
 /// Perform the core processing behind `mlir-opt`.
 /// - outputStream is the stream where the resulting IR is printed.
 /// - buffer is the in-memory file to parser and process.
 /// - registry should contain all the dialects that can be parsed in the source.
 /// - config contains the configuration options for the tool.
 LogicalResult WaterOptMain(llvm::raw_ostream &outputStream,
+                           llvm::raw_ostream *diagnosticsStream,
                            std::unique_ptr<llvm::MemoryBuffer> buffer,
                            DialectRegistry &registry,
                            const MlirOptMainConfig &config);
-
-/// Implementation for tools like `mlir-opt`.
-/// - toolName is used for the header displayed by `--help`.
-/// - registry should contain all the dialects that can be parsed in the source.
-LogicalResult WaterOptMain(int argc, char **argv, llvm::StringRef toolName,
-                           DialectRegistry &registry);
 
 /// Implementation for tools like `mlir-opt`.
 /// This function can be used with registerAndParseCLIOptions so that
@@ -52,7 +56,15 @@ LogicalResult WaterOptMain(int argc, char **argv, llvm::StringRef toolName,
 /// - registry should contain all the dialects that can be parsed in the source.
 LogicalResult WaterOptMain(int argc, char **argv, llvm::StringRef inputFilename,
                            llvm::StringRef outputFilename,
+                           llvm::StringRef diagnosticsFilename,
                            DialectRegistry &registry);
+
+/// Implementation for tools like `mlir-opt`.
+/// - toolName is used for the header displayed by `--help`.
+/// - registry should contain all the dialects that can be parsed in the source.
+LogicalResult WaterOptMain(int argc, char **argv, llvm::StringRef toolName,
+                           DialectRegistry &registry);
+
 } // namespace mlir
 
 #endif // WATER_TOOLS_WATEROPT_WATEROPTMAIN_H
