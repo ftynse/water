@@ -31,6 +31,7 @@
 #include "mlir/Support/ToolUtilities.h"
 #include "mlir/Tools/ParseUtilities.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
+#include "water/Tools/water-opt/DiagnosticHandler.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/LogicalResult.h"
@@ -39,6 +40,10 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "llvm/Support/raw_ostream.h"
+#include <memory>
+
+#include "mlir/Debug/Counter.h"
 
 using namespace mlir;
 using namespace llvm;
@@ -277,7 +282,7 @@ performActions(raw_ostream &os,
 
 /// Parses the memory buffer.  If successfully, run a series of passes against
 /// it and print the result.
-static LogicalResult processBuffer(raw_ostream &os,
+static LogicalResult processBuffer(raw_ostream &os, raw_ostream *diagnosticsOs,
                                    std::unique_ptr<MemoryBuffer> ownedBuffer,
                                    const MlirOptMainConfig &config,
                                    DialectRegistry &registry,
@@ -311,6 +316,12 @@ static LogicalResult processBuffer(raw_ostream &os,
     DiagnosticFilter diagnosticFilter(&context,
                                       config.getDiagnosticVerbosityLevel(),
                                       config.shouldShowNotes());
+
+    if (!diagnosticsOs)
+      return performActions(os, sourceMgr, &context, config);
+
+    WaterDiagnosticHandler waterDiagnosticHandler(&context, *diagnosticsOs);
+
     return performActions(os, sourceMgr, &context, config);
   }
 
@@ -340,6 +351,7 @@ static LogicalResult printRegisteredPassesAndReturn() {
 }
 
 LogicalResult mlir::WaterOptMain(llvm::raw_ostream &outputStream,
+                                 llvm::raw_ostream *diagnosticsStream,
                                  std::unique_ptr<llvm::MemoryBuffer> buffer,
                                  DialectRegistry &registry,
                                  const MlirOptMainConfig &config) {
@@ -365,8 +377,8 @@ LogicalResult mlir::WaterOptMain(llvm::raw_ostream &outputStream,
 
   auto chunkFn = [&](std::unique_ptr<MemoryBuffer> chunkBuffer,
                      raw_ostream &os) {
-    return processBuffer(os, std::move(chunkBuffer), config, registry,
-                         threadPool);
+    return processBuffer(os, diagnosticsStream, std::move(chunkBuffer), config,
+                         registry, threadPool);
   };
   return splitAndProcessBuffer(std::move(buffer), chunkFn, outputStream,
                                config.inputSplitMarker(),
@@ -376,6 +388,7 @@ LogicalResult mlir::WaterOptMain(llvm::raw_ostream &outputStream,
 LogicalResult mlir::WaterOptMain(int argc, char **argv,
                                  llvm::StringRef inputFilename,
                                  llvm::StringRef outputFilename,
+                                 llvm::StringRef diagnosticsFilename,
                                  DialectRegistry &registry) {
 
   InitLLVM y(argc, argv);
@@ -409,7 +422,20 @@ LogicalResult mlir::WaterOptMain(int argc, char **argv,
     llvm::errs() << errorMessage << "\n";
     return failure();
   }
-  if (failed(WaterOptMain(output->os(), std::move(file), registry, config)))
+
+  std::unique_ptr<ToolOutputFile> diagnostics = nullptr;
+  if (!diagnosticsFilename.empty()) {
+    diagnostics = openOutputFile(diagnosticsFilename, &errorMessage);
+    if (!diagnostics) {
+      llvm::errs() << errorMessage << "\n";
+      return failure();
+    }
+    diagnostics->keep();
+  }
+
+  if (failed(WaterOptMain(output->os(),
+                          diagnostics ? &diagnostics->os() : nullptr,
+                          std::move(file), registry, config)))
     return failure();
 
   // Keep the output file if the invocation of WaterOptMain was successful.
@@ -417,14 +443,50 @@ LogicalResult mlir::WaterOptMain(int argc, char **argv,
   return success();
 }
 
+std::tuple<std::string, std::string, std::string>
+mlir::registerAndParseWaterCLIOptions(int argc, char **argv,
+                                      llvm::StringRef toolName,
+                                      DialectRegistry &registry) {
+  static cl::opt<std::string> inputFilename(
+      cl::Positional, cl::desc("<input file>"), cl::init("-"));
+
+  static cl::opt<std::string> outputFilename("o", cl::desc("Output filename"),
+                                             cl::value_desc("filename"),
+                                             cl::init("-"));
+
+  static cl::opt<std::string> diagnosticsFile(
+      "diagnostics-file", cl::desc("Diagnostics filename"),
+      cl::value_desc("filename"), cl::init(""));
+
+  // Register any command line options.
+  MlirOptMainConfig::registerCLOptions(registry);
+  registerAsmPrinterCLOptions();
+  registerMLIRContextCLOptions();
+  registerPassManagerCLOptions();
+  registerDefaultTimingManagerCLOptions();
+  tracing::DebugCounter::registerCLOptions();
+
+  // Build the list of dialects as a header for the --help message.
+  std::string helpHeader = (toolName + "\nAvailable Dialects: ").str();
+  {
+    llvm::raw_string_ostream os(helpHeader);
+    interleaveComma(registry.getDialectNames(), os,
+                    [&](auto name) { os << name; });
+  }
+  // Parse pass names in main to ensure static initialization completed.
+  cl::ParseCommandLineOptions(argc, argv, helpHeader);
+  return std::make_tuple(inputFilename.getValue(), outputFilename.getValue(),
+                         diagnosticsFile.getValue());
+}
+
 LogicalResult mlir::WaterOptMain(int argc, char **argv,
                                  llvm::StringRef toolName,
                                  DialectRegistry &registry) {
 
   // Register and parse command line options.
-  std::string inputFilename, outputFilename;
-  std::tie(inputFilename, outputFilename) =
-      registerAndParseCLIOptions(argc, argv, toolName, registry);
+  auto [inputFilename, outputFilename, diagnosticsFilename] =
+      registerAndParseWaterCLIOptions(argc, argv, toolName, registry);
 
-  return WaterOptMain(argc, argv, inputFilename, outputFilename, registry);
+  return WaterOptMain(argc, argv, inputFilename, outputFilename,
+                      diagnosticsFilename, registry);
 }
