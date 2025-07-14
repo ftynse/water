@@ -12,9 +12,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "water/Tools/water-opt/WaterOptMain.h"
+#include "water/Tools/water-opt/JSONDiagnosticHandler.h"
 
 #include "mlir/Bytecode/BytecodeWriter.h"
 #include "mlir/Debug/CLOptionsSetup.h"
+#include "mlir/Debug/Counter.h"
 #include "mlir/Dialect/IRDL/IR/IRDL.h"
 #include "mlir/Dialect/IRDL/IRDLLoading.h"
 #include "mlir/IR/AsmState.h"
@@ -31,7 +33,7 @@
 #include "mlir/Support/ToolUtilities.h"
 #include "mlir/Tools/ParseUtilities.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
-#include "water/Tools/water-opt/DiagnosticHandler.h"
+
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/LogicalResult.h"
@@ -41,9 +43,8 @@
 #include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
-#include <memory>
 
-#include "mlir/Debug/Counter.h"
+#include <memory>
 
 using namespace mlir;
 using namespace llvm;
@@ -320,7 +321,7 @@ static LogicalResult processBuffer(raw_ostream &os, raw_ostream *diagnosticsOs,
     if (!diagnosticsOs)
       return performActions(os, sourceMgr, &context, config);
 
-    WaterDiagnosticHandler waterDiagnosticHandler(&context, *diagnosticsOs);
+    JSONDiagnosticHandler jsonDiagnosticHandler(&context, *diagnosticsOs);
 
     return performActions(os, sourceMgr, &context, config);
   }

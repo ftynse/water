@@ -21,9 +21,9 @@
 
 namespace mlir {
 
-class WaterDiagnosticHandler : public ScopedDiagnosticHandler {
+class JSONDiagnosticHandler : public ScopedDiagnosticHandler {
 public:
-  WaterDiagnosticHandler(MLIRContext *ctx, llvm::raw_ostream &os)
+  JSONDiagnosticHandler(MLIRContext *ctx, llvm::raw_ostream &os)
       : ScopedDiagnosticHandler(ctx) {
     setHandler([&](Diagnostic &diag) {
       Location loc = diag.getLocation();
