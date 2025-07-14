@@ -75,7 +75,9 @@ class CMakeBuild(build_ext):
 
         if not self.dry_run:
             # Build CMake project
-            invoke_cmake("--build", ".", "--target", "water-opt/install", cwd=build_dir)
+            invoke_cmake(
+                "--build", ".", "--target", "tools/water-opt/install", cwd=build_dir
+            )
 
 
 setup(
