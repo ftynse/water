@@ -16,21 +16,44 @@
 
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/Location.h"
 #include "llvm/Support/JSON.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace mlir {
+
+/// Attempt to extract a filename for the given loc.
+static std::optional<FileLineColLoc> extractFileLoc(Location loc) {
+  while (auto callSiteLoc = dyn_cast<CallSiteLoc>(loc))
+    loc = callSiteLoc.getCallee();
+
+  if (auto fileLoc = dyn_cast<FileLineColLoc>(loc))
+    return fileLoc;
+  if (auto nameLoc = dyn_cast<NameLoc>(loc))
+    return extractFileLoc(nameLoc.getChildLoc());
+  if (auto opaqueLoc = dyn_cast<OpaqueLoc>(loc))
+    return extractFileLoc(opaqueLoc.getFallbackLocation());
+  if (auto fusedLoc = dyn_cast<FusedLoc>(loc)) {
+    for (auto loc : fusedLoc.getLocations()) {
+      if (auto fileLoc = extractFileLoc(loc))
+        return fileLoc;
+    }
+  }
+  return {};
+}
 
 class JSONDiagnosticHandler : public ScopedDiagnosticHandler {
 public:
   JSONDiagnosticHandler(MLIRContext *ctx, llvm::raw_ostream &os)
       : ScopedDiagnosticHandler(ctx) {
     setHandler([&](Diagnostic &diag) {
-      Location loc = diag.getLocation();
-      auto fileLoc = dyn_cast<FileLineColLoc>(loc);
+      std::optional<FileLineColLoc> maybeFileLoc =
+          extractFileLoc(diag.getLocation());
 
-      if (!fileLoc)
+      if (!maybeFileLoc)
         return failure();
+
+      FileLineColLoc fileLoc = *maybeFileLoc;
 
       StringRef file = fileLoc.getFilename().strref();
       unsigned line = fileLoc.getLine();
