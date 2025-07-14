@@ -14,7 +14,9 @@
 #ifndef WATER_TOOLS_WATEROPT_DIAGNOSTICSHANDLER_H
 #define WATER_TOOLS_WATEROPT_DIAGNOSTICSHANDLER_H
 
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Diagnostics.h"
+#include "llvm/Support/JSON.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace mlir {
@@ -23,9 +25,23 @@ class WaterDiagnosticHandler : public ScopedDiagnosticHandler {
 public:
   WaterDiagnosticHandler(MLIRContext *ctx, llvm::raw_ostream &os)
       : ScopedDiagnosticHandler(ctx) {
-    setHandler([&os](Diagnostic &diag) {
-      // TODO: properly serialize
-      os << diag << "\n";
+    setHandler([&](Diagnostic &diag) {
+      Location loc = diag.getLocation();
+      auto fileLoc = dyn_cast<FileLineColLoc>(loc);
+
+      if (!fileLoc)
+        return failure();
+
+      StringRef file = fileLoc.getFilename().strref();
+      unsigned line = fileLoc.getLine();
+      unsigned col = fileLoc.getColumn();
+      std::string msg = diag.str();
+
+      llvm::json::Value json = llvm::json::Object{
+          {"file", file}, {"line", line}, {"column", col}, {"message", msg}};
+
+      os << json << "\n";
+
       return failure();
     });
   }
