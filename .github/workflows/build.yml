@@ -68,7 +68,7 @@ jobs:
           cmake ../llvm-project/llvm                                           \
             -GNinja                                                            \
             -DCMAKE_BUILD_TYPE=Release                                         \
-            -DLLVM_ENABLE_PROJECTS="mlir"                                      \
+            -DLLVM_ENABLE_PROJECTS="mlir;llvm"                                 \
             -DLLVM_ENABLE_ASSERTIONS=ON                                        \
             -DLLVM_INSTALL_UTILS=ON                                            \
             -DLLVM_TARGETS_TO_BUILD="X86;AMDGPU"                               \
