@@ -88,7 +88,7 @@ public:
 };
 } // namespace
 
-LogicalResult loadIRDLDialects(StringRef irdlFile, MLIRContext &ctx) {
+static LogicalResult loadIRDLDialects(StringRef irdlFile, MLIRContext &ctx) {
   DialectRegistry registry;
   registry.insert<irdl::IRDLDialect>();
   ctx.appendDialectRegistry(registry);
