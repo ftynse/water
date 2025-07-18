@@ -92,7 +92,7 @@ class CMakeBuild(build_ext):
             invoke_git("checkout", llvm_sha, cwd=llvm_dir)
             cmake_args = [
                 "-G Ninja",
-                "-DLLVM_TARGETS_TO_BUILD=host",
+                "-DLLVM_TARGETS_TO_BUILD=host;AMDGPU",
                 "-DLLVM_ENABLE_PROJECTS=mlir",
                 "-DBUILD_SHARED_LIBS=OFF",
                 "-DLLVM_ENABLE_ASSERTIONS=ON",
