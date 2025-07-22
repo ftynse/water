@@ -12,7 +12,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "water/Tools/water-opt/WaterOptMain.h"
-#include "water/Tools/water-opt/JSONDiagnosticHandler.h"
 
 #include "mlir/Bytecode/BytecodeWriter.h"
 #include "mlir/Debug/CLOptionsSetup.h"
@@ -36,6 +35,7 @@
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/InitLLVM.h"
+#include "llvm/Support/JSON.h"
 #include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/Regex.h"
@@ -48,6 +48,76 @@
 
 using namespace mlir;
 using namespace llvm;
+
+/// Attempt to extract a filename for the given loc.
+static std::optional<FileLineColLoc> extractFileLoc(Location loc) {
+  while (auto callSiteLoc = dyn_cast<CallSiteLoc>(loc))
+    loc = callSiteLoc.getCallee();
+
+  if (auto fileLoc = dyn_cast<FileLineColLoc>(loc))
+    return fileLoc;
+  if (auto nameLoc = dyn_cast<NameLoc>(loc))
+    return extractFileLoc(nameLoc.getChildLoc());
+  if (auto opaqueLoc = dyn_cast<OpaqueLoc>(loc))
+    return extractFileLoc(opaqueLoc.getFallbackLocation());
+  if (auto fusedLoc = dyn_cast<FusedLoc>(loc)) {
+    for (auto loc : fusedLoc.getLocations()) {
+      if (auto fileLoc = extractFileLoc(loc))
+        return fileLoc;
+    }
+  }
+  return {};
+}
+
+namespace {
+class JSONDiagnosticHandler : public ScopedDiagnosticHandler {
+public:
+  JSONDiagnosticHandler(MLIRContext *ctx, llvm::raw_ostream &os)
+      : ScopedDiagnosticHandler(ctx) {
+    setHandler([&](Diagnostic &diag) {
+      std::optional<FileLineColLoc> maybeFileLoc =
+          extractFileLoc(diag.getLocation());
+
+      if (!maybeFileLoc)
+        return failure();
+
+      FileLineColLoc fileLoc = *maybeFileLoc;
+
+      StringRef file = fileLoc.getFilename().strref();
+      unsigned line = fileLoc.getLine();
+      unsigned col = fileLoc.getColumn();
+      std::string msg = diag.str();
+      StringRef severity = [&]() -> StringRef {
+        switch (diag.getSeverity()) {
+        case DiagnosticSeverity::Error:
+          return "error";
+        case mlir::DiagnosticSeverity::Warning:
+          return "warning";
+        case mlir::DiagnosticSeverity::Note:
+          return "note";
+        case mlir::DiagnosticSeverity::Remark:
+          return "remark";
+        }
+        llvm_unreachable("unhandled diagnostic severity switch case");
+      }();
+
+      llvm::json::Value json = llvm::json::Object{{"file", file},
+                                                  {"line", line},
+                                                  {"column", col},
+                                                  {"message", msg},
+                                                  {"severity", severity}};
+
+      os << json << "\n";
+
+      return success();
+    });
+  }
+};
+} // namespace
+
+//===----------------------------------------------------------------------===//
+// Taken from upstream LLVM because these are not exposed.
+//===----------------------------------------------------------------------===//
 
 namespace {
 /// A scoped diagnostic handler that suppresses certain diagnostics based on
@@ -281,6 +351,14 @@ performActions(raw_ostream &os,
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// END taken from upstream.
+//===----------------------------------------------------------------------===//
+
+//===----------------------------------------------------------------------===//
+// ADAPTED from upstream LLVM.
+//===----------------------------------------------------------------------===//
+
 /// Parses the memory buffer.  If successfully, run a series of passes against
 /// it and print the result.
 static LogicalResult processBuffer(raw_ostream &os, raw_ostream *diagnosticsOs,
@@ -491,3 +569,7 @@ LogicalResult mlir::WaterOptMain(int argc, char **argv,
   return WaterOptMain(argc, argv, inputFilename, outputFilename,
                       diagnosticsFilename, registry);
 }
+
+//===----------------------------------------------------------------------===//
+// End adapted from upstream LLVM.
+//===----------------------------------------------------------------------===//
