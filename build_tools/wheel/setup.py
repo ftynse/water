@@ -119,7 +119,9 @@ class CMakeBuild(build_ext):
         invoke_cmake(source_dir, *cmake_args, cwd=build_dir)
 
         # Build CMake project
-        invoke_cmake("--build", ".", "--target", "water-opt/install", cwd=build_dir)
+        invoke_cmake(
+            "--build", ".", "--target", "tools/water-opt/install", cwd=build_dir
+        )
 
 
 setup(
