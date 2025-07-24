@@ -34,6 +34,7 @@
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/JSON.h"
 #include "llvm/Support/LogicalResult.h"
@@ -49,24 +50,63 @@
 using namespace mlir;
 using namespace llvm;
 
-/// Attempt to extract a filename for the given loc.
-static std::optional<FileLineColLoc> extractFileLoc(Location loc) {
-  while (auto callSiteLoc = dyn_cast<CallSiteLoc>(loc))
-    loc = callSiteLoc.getCallee();
-
-  if (auto fileLoc = dyn_cast<FileLineColLoc>(loc))
-    return fileLoc;
-  if (auto nameLoc = dyn_cast<NameLoc>(loc))
-    return extractFileLoc(nameLoc.getChildLoc());
-  if (auto opaqueLoc = dyn_cast<OpaqueLoc>(loc))
-    return extractFileLoc(opaqueLoc.getFallbackLocation());
-  if (auto fusedLoc = dyn_cast<FusedLoc>(loc)) {
-    for (auto loc : fusedLoc.getLocations()) {
-      if (auto fileLoc = extractFileLoc(loc))
-        return fileLoc;
+/// Unrolls a call site containing other call site locations as callers (call
+/// stack) into a flat list of callee locations.
+static void unpackCallLoc(CallSiteLoc loc, SmallVectorImpl<Location> &result) {
+  SmallVector<CallSiteLoc> stack;
+  stack.push_back(loc);
+  while (!stack.empty()) {
+    CallSiteLoc call = stack.pop_back_val();
+    result.push_back(call.getCallee());
+    // We recurse on callers, not callsites, but this is not strictly forbidden.
+    assert(!isa<CallSiteLoc>(result.back()) &&
+           "unexpected callsite location recursion");
+    if (auto caller = dyn_cast<CallSiteLoc>(call.getCaller())) {
+      stack.push_back(caller);
+      continue;
     }
+    result.push_back(call.getCaller());
   }
-  return {};
+}
+
+/// Converts the given location into the JSON format recursively.
+static llvm::json::Value locationToJSON(Location loc) {
+  return llvm::TypeSwitch<Location, llvm::json::Value>(loc)
+      .Case([](FileLineColRange fileLineCol) {
+        fileLineCol.getStartLine();
+        return llvm::json::Object{
+            {"file", fileLineCol.getFilename().strref()},
+            {"start_line", fileLineCol.getStartLine()},
+            {"end_line", fileLineCol.getEndLine()},
+            {"start_column", fileLineCol.getStartColumn()},
+            {"end_column", fileLineCol.getEndColumn()}};
+      })
+      .Case([](UnknownLoc unknown) {
+        return llvm::json::Object{{"unknown", true}};
+      })
+      .Case([](NameLoc name) {
+        return llvm::json::Object{{"name", name.getName().strref()},
+                                  {"loc", locationToJSON(name.getChildLoc())}};
+      })
+      .Case([](FusedLoc fused) {
+        return llvm::json::Object{
+            {"fused", llvm::json::Array(llvm::map_range(fused.getLocations(),
+                                                        locationToJSON))}};
+      })
+      .Case([](CallSiteLoc call) {
+        SmallVector<Location> stack;
+        unpackCallLoc(call, stack);
+        return llvm::json::Object{
+            {"callstack",
+             llvm::json::Array(llvm::map_range(stack, locationToJSON))}};
+      })
+      .Default([](Location loc) {
+        std::string str;
+        llvm::raw_string_ostream os(str);
+        loc.print(os);
+        return llvm::json::Object{{"unsupported", true},
+                                  {"loc", llvm::json::Value(os.str())}};
+      });
 }
 
 namespace {
@@ -75,18 +115,11 @@ public:
   JSONDiagnosticHandler(MLIRContext *ctx, llvm::raw_ostream &os)
       : ScopedDiagnosticHandler(ctx) {
     setHandler([&](Diagnostic &diag) {
-      std::optional<FileLineColLoc> maybeFileLoc =
-          extractFileLoc(diag.getLocation());
+      llvm::json::Value json = locationToJSON(diag.getLocation());
+      llvm::json::Object *jsonObject = json.getAsObject();
 
-      if (!maybeFileLoc)
-        return failure();
+      assert(jsonObject);
 
-      FileLineColLoc fileLoc = *maybeFileLoc;
-
-      StringRef file = fileLoc.getFilename().strref();
-      unsigned line = fileLoc.getLine();
-      unsigned col = fileLoc.getColumn();
-      std::string msg = diag.str();
       StringRef severity = [&]() -> StringRef {
         switch (diag.getSeverity()) {
         case DiagnosticSeverity::Error:
@@ -101,14 +134,9 @@ public:
         llvm_unreachable("unhandled diagnostic severity switch case");
       }();
 
-      llvm::json::Value json = llvm::json::Object{{"file", file},
-                                                  {"line", line},
-                                                  {"column", col},
-                                                  {"message", msg},
-                                                  {"severity", severity}};
-
+      jsonObject->try_emplace("message", diag.str());
+      jsonObject->try_emplace("severity", severity);
       os << json << "\n";
-
       return success();
     });
   }
