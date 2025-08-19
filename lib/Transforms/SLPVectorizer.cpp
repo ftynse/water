@@ -1301,7 +1301,7 @@ void WaterGreedySLPVectorizerPass::runOnOperation() {
 
     auto sizeInBits = dataLayout->getTypeSizeInBits(type);
 
-    return sizeInBits * count <= this->maxVectorBitwidth;
+    return sizeInBits.getFixedValue() * count <= this->maxVectorBitwidth;
   };
 
   // Run until fixed point is reached.
