@@ -23,6 +23,7 @@
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "mlir/Transforms/Passes.h"
 
+#include "water/Dialect/Wave/IR/WaveDialect.h"
 #include "water/Tools/water-opt/WaterOptMain.h"
 #include "water/Transforms/Passes.h"
 
@@ -47,7 +48,8 @@ int main(int argc, char **argv) {
                   mlir::arith::ArithDialect, mlir::cf::ControlFlowDialect,
                   mlir::func::FuncDialect, mlir::gpu::GPUDialect,
                   mlir::LLVM::LLVMDialect, mlir::memref::MemRefDialect,
-                  mlir::scf::SCFDialect, mlir::vector::VectorDialect>();
+                  mlir::scf::SCFDialect, mlir::vector::VectorDialect,
+                  wave::WaveDialect>();
 
   return mlir::asMainReturnCode(
       WaterOptMain(argc, argv, "water optimizer driver\n", registry));
