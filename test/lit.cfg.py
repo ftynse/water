@@ -47,12 +47,12 @@ config.water_tools_dir = os.path.join(config.water_obj_root, "bin")
 config.water_libs_dir = os.path.join(config.water_obj_root, "lib")
 
 config.substitutions.append(("%water_libs", config.water_libs_dir))
+py_root_base = os.path.dirname(os.path.dirname(config.water_obj_root))  # -> .../build
 config.substitutions.append(
-    ("%py_pkg_root", os.path.join(config.water_obj_root, "python_packages"))
+    ("%py_pkg_root", os.path.join(py_root_base, "python_packages"))
 )
 
-# Enable when Water Python bindings were built into the tree.
-if os.path.isdir(os.path.join(config.water_obj_root, "python_packages", "water_mlir")):
+if os.path.isdir(os.path.join(py_root_base, "python_packages", "water_mlir")):
     config.available_features.add("water_python")
 
 # Tweak the PATH to include the tools dir.
