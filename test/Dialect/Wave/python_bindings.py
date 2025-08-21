@@ -2,8 +2,6 @@
 # RUN: env PYTHONPATH=%py_pkg_root:%PYTHONPATH %python %s | FileCheck %s
 # CHECK: wave_ok
 
-import sys
-
 try:
     from water_mlir import ir
     from water_mlir.dialects import wave
@@ -21,4 +19,3 @@ try:
     print("wave_ok")
 except Exception as e:
     print("error:", e)
-    sys.exit(1)

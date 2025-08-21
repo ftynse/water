@@ -104,6 +104,7 @@ class CMakeBuild(build_ext):
                 f"-DCMAKE_INSTALL_PREFIX={llvm_install_dir}{os.sep}",
                 f"-DCMAKE_BUILD_TYPE={build_type}",
                 f"-DPython3_EXECUTABLE={sys.executable}",
+                "-DWATER_ENABLE_PYTHON=ON",
             ]
 
             invoke_cmake(llvm_dir / "llvm", *cmake_args, cwd=llvm_build_dir)
@@ -117,6 +118,7 @@ class CMakeBuild(build_ext):
             "-DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON",
             f"-DCMAKE_INSTALL_PREFIX={extdir}{os.sep}",
             f"-DCMAKE_BUILD_TYPE={build_type}",
+            "-DMLIR_ENABLE_BINDINGS_PYTHON=ON",
             f"-DPython3_EXECUTABLE={sys.executable}",
             "-DWATER_ENABLE_PYTHON=ON",
         ]
