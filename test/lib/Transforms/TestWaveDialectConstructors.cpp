@@ -45,7 +45,9 @@ static llvm::LogicalResult testCreateTensor(mlir::Operation *op) {
   auto type = wave::WaveTensorType::getChecked(
       [&]() { return op->emitError(); }, op->getContext(),
       llvm::ArrayRef(shapeComponents), fullySpecifiedAttr.getValue(),
-      elementType);
+      elementType,
+      wave::WaveAddressSpaceAttr::get(op->getContext(),
+                                      wave::WaveAddressSpace::Unspecified));
   return llvm::failure(type == nullptr);
 }
 
@@ -54,6 +56,10 @@ class TestWaveDialectConstructorPass
           TestWaveDialectConstructorPass> {
 public:
   void runOnOperation() override {
+    wave::WaveAddressSpaceAttr::get(&getContext(),
+                                    wave::WaveAddressSpace::Register)
+        .dump();
+
     mlir::OperationName createTensorOpName("wave_test.create_tensor",
                                            &getContext());
     mlir::WalkResult walkResult =

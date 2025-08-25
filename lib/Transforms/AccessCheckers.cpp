@@ -108,7 +108,7 @@ static LogicalResult insertInBoundsAssertions(OpBuilder &builder, OpTy op,
   Value zero = b.createOrFold<arith::ConstantIndexOp>(0);
   Value totalCheck =
       checkKind == CheckKind::Combined
-          ? b.createOrFold<arith::ConstantIntOp>(b.getI1Type(), 1)
+          ? b.createOrFold<arith::ConstantIntOp>(1, b.getI1Type())
           : nullptr;
   for (unsigned i = 0, e = op.getMemRefType().getRank(); i < e; ++i) {
     Value index = b.createOrFold<arith::ConstantIndexOp>(i);
@@ -243,7 +243,7 @@ static Value createDummyValue(OpBuilder &builder, Location loc, Type type) {
   }
   if (auto floatType = dyn_cast<FloatType>(type)) {
     return builder.create<arith::ConstantFloatOp>(
-        loc, floatType, llvm::APFloat::getZero(floatType.getFloatSemantics()));
+        loc, llvm::APFloat::getZero(floatType.getFloatSemantics()), floatType);
   }
   if (auto vecType = dyn_cast<VectorType>(type)) {
     Value element = createDummyValue(builder, loc, vecType.getElementType());

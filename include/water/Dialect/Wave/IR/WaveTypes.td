@@ -7,6 +7,7 @@
 #ifndef WATER_DIALECT_WAVE_WAVETYPES
 #define WATER_DIALECT_WAVE_WAVETYPES
 
+include "water/Dialect/Wave/IR/WaveAttrs.td"
 include "water/Dialect/Wave/IR/WaveDialect.td"
 include "mlir/IR/AttrTypeBase.td"
 
@@ -27,12 +28,17 @@ def WaveTensorType : TypeDef<WaveDialect, "WaveTensor"> {
     ArrayRefParameter<
       "::wave::WaveSymbolAttr",
       "Shape of the tensor when fully inferred, missing otherwise">:$shape,
-    // "::wave::WaveSymbolAttr":$shape,
     TypeParameter<"bool", "">:$fully_specified,
-    TypeParameter<"::mlir::Type", "Type of the tensor elements">:$element_type
+    TypeParameter<"::mlir::Type", "Type of the tensor elements">:$element_type,
+    DefaultValuedParameter<
+        "::wave::WaveAddressSpaceAttr",
+        "::wave::WaveAddressSpaceAttr::get($_ctxt, ::wave::WaveAddressSpace::Unspecified)",
+        "Where does the tensor live">:$address_space
   );
 
-  let assemblyFormat = "`<` custom<TensorShape>($shape, $fully_specified) `of` $element_type `>`";
+  let assemblyFormat =
+      "`<` custom<TensorShape>($shape, $fully_specified) `of` $element_type "
+      "(`,` $address_space^)? `>`";
   let genVerifyDecl = 1;
 
   let extraClassDeclaration = [{
@@ -41,7 +47,41 @@ def WaveTensorType : TypeDef<WaveDialect, "WaveTensor"> {
       assert(getFullySpecified() && "requested rank of an under-specified tensor");
       return getShape().size();
     }
+
+    // Return the address space.
+    ::wave::WaveAddressSpace getAddressSpaceValue() const {
+      return getAddressSpace().getValue();
+    }
   }];
 }
+
+def WaveTensorAddressSpaceUnspecified
+  : CPred<"::llvm::cast<::wave::WaveTensorType>($_self).getAddressSpaceValue()"
+          " == ::wave::WaveAddressSpace::Unspecified">;
+def WaveTensorAddressSpaceGlobal
+  : CPred<"::llvm::cast<::wave::WaveTensorType>($_self).getAddressSpaceValue()"
+          " == ::wave::WaveAddressSpace::Global">;
+def WaveTensorAddressSpaceShared
+  : CPred<"::llvm::cast<::wave::WaveTensorType>($_self).getAddressSpaceValue()"
+          " == ::wave::WaveAddressSpace::Shared">;
+def WaveTensorAddressSpaceRegister
+  : CPred<"::llvm::cast<::wave::WaveTensorType>($_self).getAddressSpaceValue()"
+          " == ::wave::WaveAddressSpace::Register">;
+
+def WaveTensorInRegister : TypeConstraint<
+  And<[WaveTensorType.predicate,
+       Or<[WaveTensorAddressSpaceUnspecified, WaveTensorAddressSpaceRegister]>]>,
+  "Wave tensor in register",
+  WaveTensorType.cppType
+>;
+
+def WaveTensorInMemory : TypeConstraint<
+  And<[WaveTensorType.predicate,
+       Or<[WaveTensorAddressSpaceUnspecified,
+           WaveTensorAddressSpaceGlobal,
+           WaveTensorAddressSpaceShared]>]>,
+  "Wave tensor in memory",
+  WaveTensorType.cppType
+>;
 
 #endif // WATER_DIALECT_WAVE_WAVETYPES
