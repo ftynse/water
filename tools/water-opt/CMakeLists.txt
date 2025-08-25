@@ -7,6 +7,7 @@ set(LIBS
         MLIROptLib
         MLIRWaterTransforms
         MLIRWaterTestTransforms
+        MLIRWaveTransforms
 )
 
 add_llvm_executable(water-opt

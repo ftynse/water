@@ -6,6 +6,7 @@
 
 include "water/Dialect/Wave/IR/WaveAttrs.td"
 include "water/Dialect/Wave/IR/WaveDialect.td"
+include "water/Dialect/Wave/IR/WaveInterfaces.td"
 include "water/Dialect/Wave/IR/WaveTypes.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
@@ -17,7 +18,9 @@ include "mlir/Interfaces/ControlFlowInterfaces.td"
 // Base classes for arithmetic operations
 //-----------------------------------------------------------------------------
 
-class UnaryWaveOp<string mnemonic> : Op<WaveDialect, mnemonic> {
+class UnaryWaveOp<string mnemonic>
+    : Op<WaveDialect, mnemonic,
+         [WaveInferTypeOpInterface, IdentityTypeInferenceOpTrait]> {
   let arguments = (ins
     Arg<WaveTensorType, "Argument">:$argument
   );
@@ -29,7 +32,9 @@ class UnaryWaveOp<string mnemonic> : Op<WaveDialect, mnemonic> {
   let assemblyFormat = "$argument attr-dict `:` functional-type(operands, results)";
 }
 
-class BinaryWaveOp<string mnemonic> : Op<WaveDialect, mnemonic> {
+class BinaryWaveOp<string mnemonic>
+    : Op<WaveDialect, mnemonic,
+         [WaveInferTypeOpInterface, IdentityTypeInferenceOpTrait]> {
   let arguments = (ins
     Arg<WaveTensorType, "Left-hand side">:$lhs,
     Arg<WaveTensorType, "Right-hand side">:$rhs
