@@ -6,6 +6,7 @@
 
 include "water/Dialect/Wave/IR/WaveAttrs.td"
 include "water/Dialect/Wave/IR/WaveDialect.td"
+include "water/Dialect/Wave/IR/WaveInterfaces.td"
 include "water/Dialect/Wave/IR/WaveTypes.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
@@ -28,8 +29,10 @@ class WaveArithmeticOpDoc {
 }
 
 class UnaryWaveOp<string mnemonic>
-    : Op<WaveDialect, mnemonic>,
+    : Op<WaveDialect, mnemonic,
+         [WaveInferTypeOpInterface, IdentityTypeInferenceOpTrait]>,
       WaveArithmeticOpDoc {
+
   let arguments = (ins
     Arg<WaveTensorInRegister, "Argument">:$argument
   );
@@ -43,7 +46,8 @@ class UnaryWaveOp<string mnemonic>
 }
 
 class BinaryWaveOp<string mnemonic>
-    : Op<WaveDialect, mnemonic>,
+    : Op<WaveDialect, mnemonic,
+         [WaveInferTypeOpInterface, IdentityTypeInferenceOpTrait]>,
       WaveArithmeticOpDoc {
   let arguments = (ins
     Arg<WaveTensorInRegister, "Left-hand side">:$lhs,
@@ -83,7 +87,8 @@ def Exp2Op : UnaryWaveOp<"exp2"> {
 }
 
 def MmaOp
-    : Op<WaveDialect, "mma">,
+    : Op<WaveDialect, "mma",
+         [DeclareOpInterfaceMethods<WaveInferTypeOpInterface>]>,
       WaveArithmeticOpDoc {
   let summary = "Matrix multiply and accumulate";
   let description = baseDescription # [{
@@ -165,7 +170,8 @@ def YieldOp : Op<WaveDialect, "yield",
 // Memory-related operations
 //-----------------------------------------------------------------------------
 
-def ReadOp : Op<WaveDialect, "read"> {
+def ReadOp : Op<WaveDialect, "read", [
+    WaveInferTypeOpInterface, IdentityTypeInferenceOpTrait]> {
   let summary = "Reads from memory";
   let description = [{
     Moves data from a memory-resident tensor to a register-resident tensor
@@ -184,7 +190,8 @@ def ReadOp : Op<WaveDialect, "read"> {
     "$memory attr-dict `:` functional-type(operands, results)";
 }
 
-def RegisterOp : Op<WaveDialect, "register"> {
+def RegisterOp : Op<WaveDialect, "register", [
+    WaveInferTypeOpInterface, NoOpTypeInferenceOpTrait]> {
   let summary = "Defines a tensor value known to be placed in a register";
   let description = [{
     Defines a new register-resident tensor initialized with the given scalar
@@ -206,7 +213,8 @@ def RegisterOp : Op<WaveDialect, "register"> {
   let hasVerifier = 1;
 }
 
-def WriteOp : Op<WaveDialect, "write"> {
+def WriteOp : Op<WaveDialect, "write", [
+    WaveInferTypeOpInterface, NoOpTypeInferenceOpTrait]> {
   let summary = "Writes into memory";
   let description = [{
     Moves data from a register-resident tensor into a memory-resident tensor
