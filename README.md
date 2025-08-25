@@ -33,7 +33,10 @@ cmake -G Ninja \
       -DLLVM_ENABLE_PROJECTS=mlir \
       -DLLVM_EXTERNAL_PROJECTS=water \
       -DLLVM_EXTERNAL_WATER_SOURCE_DIR=$PWD \
-      -DBUILD_SHARED_LIBS=On
+      -DBUILD_SHARED_LIBS=On \
+      -DPython3_EXECUTABLE="$(which python)" \
+      -DMLIR_ENABLE_BINDINGS_PYTHON=ON \
+      -DWATER_ENABLE_PYTHON=ON
 cmake --build build --target check-water
 ```
 
@@ -52,6 +55,7 @@ Here, `$LLVM_SRC_DIR` needs to point to the root of the monorepo.
   times and out-of-memory errors on low-memory machines.
 * `-DCMAKE_EXPORT_COMPILE_COMMANDS=On` - generate `compile_commands.json` used
   by IDEs to discover the source file tree.
+* `-DWATER_ENABLE_PYTHON=ON` - enable building Python bindings.
 
 ### Python Wheel
 
