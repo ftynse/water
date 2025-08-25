@@ -12,7 +12,7 @@ concurrency:
 
 env:
   LLVM_SHA_FILE: llvm-sha.txt
-  LLVM_CACHE_NUMBER: 1  # Increase to reset cache
+  LLVM_CACHE_NUMBER: 2  # Increase to reset cache
 
 jobs:
   build_llvm_linux:
@@ -44,6 +44,7 @@ jobs:
           sudo apt update
           sudo apt install -y ninja-build cmake clang lld
           pip install lit
+          pip install -r requirements-dev.txt
 
       - name: Checkout LLVM
         if: steps.cache-llvm-mlir.outputs.cache-hit != 'true'
@@ -77,6 +78,8 @@ jobs:
             -DMLIR_INCLUDE_TESTS=OFF                                           \
             -DLLVM_USE_LINKER=lld                                              \
             -DLLVM_DISTRIBUTION_COMPONENTS="llvm-headers;llvm-libraries;cmake-exports;FileCheck;count;not;mlir-headers;mlir-libraries;mlir-cmake-exports;mlir-tblgen" \
+            -DMLIR_ENABLE_BINDINGS_PYTHON=ON                                   \
+            -DWATER_ENABLE_PYTHON=ON                                           \
             -DCMAKE_INSTALL_PREFIX=${GITHUB_WORKSPACE}/llvm-mlir/_mlir_install
           ninja install-distribution-stripped
           cp bin/FileCheck ${GITHUB_WORKSPACE}/llvm-mlir/_mlir_install/bin/
@@ -134,7 +137,9 @@ jobs:
             -DLLVM_DIR=${LLVM_DIR}/lib/cmake/llvm                              \
             -DMLIR_DIR=${LLVM_DIR}/lib/cmake/mlir                              \
             -DBUILD_SHARED_LIBS=${{ matrix.shared_libs }}                      \
-            -DLLVM_EXTERNAL_LIT=${EXTERNAL_LIT}
+            -DLLVM_EXTERNAL_LIT=${EXTERNAL_LIT}                                \
+            -DMLIR_ENABLE_BINDINGS_PYTHON=ON                                   \
+            -DWATER_ENABLE_PYTHON=ON
           cmake --build .
 
       - name: Test water
