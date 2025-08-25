@@ -79,6 +79,18 @@ def WaveTensorType : TypeDef<WaveDialect, "WaveTensor"> {
     ::wave::WaveAddressSpace getAddressSpaceValue() const {
       return getAddressSpace().getValue();
     }
+
+    // Return a tensor with the same element type and address space and the
+    // shape copied from the other tensor.
+    ::wave::WaveTensorType copyShapeFrom(::wave::WaveTensorType other) {
+      if (other.getElementType() == getElementType() &&
+          other.getAddressSpace() == getAddressSpace())
+        return other;
+
+      return ::wave::WaveTensorType::get(
+          getContext(), other.getShape(), other.getFullySpecified(),
+          getElementType(), getAddressSpace());
+    }
   }];
 }
 

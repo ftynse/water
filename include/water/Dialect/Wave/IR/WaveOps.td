@@ -46,7 +46,8 @@ class WaveArithmeticOpDoc {
 }
 
 class UnaryWaveOp<string mnemonic>
-    : WaveOp<mnemonic>,
+    : WaveOp<mnemonic,
+         [WaveInferTypeOpInterface, IdentityTypeInferenceOpTrait]>,
       WaveArithmeticOpDoc {
   let arguments = !con((ins
     Arg<WaveTensorInRegister, "Argument">:$argument
@@ -61,7 +62,8 @@ class UnaryWaveOp<string mnemonic>
 }
 
 class BinaryWaveOp<string mnemonic>
-    : WaveOp<mnemonic>,
+    : WaveOp<mnemonic,
+         [WaveInferTypeOpInterface, IdentityTypeInferenceOpTrait]>,
       WaveArithmeticOpDoc {
   let arguments = !con((ins
     Arg<WaveTensorInRegister, "Left-hand side">:$lhs,
@@ -101,9 +103,9 @@ def Exp2Op : UnaryWaveOp<"exp2"> {
   let description = baseDescription;
 }
 
-def MmaOp
-    : WaveOp<"mma">,
-      WaveArithmeticOpDoc {
+def MmaOp : WaveOp<"mma",
+    [DeclareOpInterfaceMethods<WaveInferTypeOpInterface>]>,
+            WaveArithmeticOpDoc {
   let summary = "Matrix multiply and accumulate";
   let description = baseDescription # [{
     The mandatory `kind` attribute indicates which configuration to use in
@@ -185,7 +187,8 @@ def YieldOp : Op<WaveDialect, "yield",
 // Memory-related operations
 //-----------------------------------------------------------------------------
 
-def ReadOp : WaveOp<"read"> {
+def ReadOp : WaveOp<"read", [
+    WaveInferTypeOpInterface, IdentityTypeInferenceOpTrait]> {
   let summary = "Reads from memory";
   let description = [{
     Moves data from a memory-resident tensor to a register-resident tensor
@@ -204,7 +207,8 @@ def ReadOp : WaveOp<"read"> {
                        "functional-type(operands, results)";
 }
 
-def RegisterOp : WaveOp<"register"> {
+def RegisterOp : WaveOp<"register", [
+    WaveInferTypeOpInterface, NoOpTypeInferenceOpTrait]> {
   let summary = "Defines a tensor value known to be placed in a register";
   let description = [{
     Defines a new register-resident tensor initialized with the given scalar
@@ -227,7 +231,8 @@ def RegisterOp : WaveOp<"register"> {
   let hasVerifier = 1;
 }
 
-def WriteOp : WaveOp<"write"> {
+def WriteOp : WaveOp<"write", [
+    WaveInferTypeOpInterface, NoOpTypeInferenceOpTrait]> {
   let summary = "Writes into memory";
   let description = [{
     Moves data from a register-resident tensor into a memory-resident tensor

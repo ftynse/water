@@ -12,6 +12,7 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "water/Dialect/Wave/IR/WaveAttrs.h"
+#include "water/Dialect/Wave/IR/WaveInterfaces.h"
 #include "water/Dialect/Wave/IR/WaveTypes.h"
 #include "llvm/ADT/STLExtras.h"
 
@@ -253,6 +254,27 @@ mlir::LogicalResult wave::IterateOp::verify() {
 //-----------------------------------------------------------------------------
 // MmaOp
 //-----------------------------------------------------------------------------
+
+llvm::FailureOr<mlir::ChangeResult> wave::MmaOp::propagateForward(
+    llvm::ArrayRef<wave::WaveTensorType> operandTypes,
+    llvm::MutableArrayRef<wave::WaveTensorType> resultTypes,
+    llvm::raw_ostream &errs) {
+  // TODO: probably upstream, we want a value-less adaptor or some way of
+  // querying positions of named arguments instead of magic values here. It is
+  // currently possible by doing get<OperandName>Mutable().getOperandNumber(),
+  // but a bit annoying.
+  return detail::propagateShapeInformation(operandTypes[2], resultTypes[0],
+                                           "accumulator", "result", errs);
+}
+
+llvm::FailureOr<mlir::ChangeResult> wave::MmaOp::propagateBackward(
+    llvm::MutableArrayRef<wave::WaveTensorType> operandTypes,
+    llvm::ArrayRef<wave::WaveTensorType> resultTypes, llvm::raw_ostream &errs) {
+  // TODO: we may consider doing partial type propagation, but we can't infer
+  // the reduction dimension from the result type since it is absent from it.
+  return detail::propagateShapeInformation(resultTypes[0], operandTypes[2],
+                                           "result", "accumulator", errs);
+}
 
 // Check if the given type is one of the allowed types provided as template
 // arguments and report an error at the given location otherwise.
