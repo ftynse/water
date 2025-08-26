@@ -9,6 +9,9 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
 
+using namespace mlir;
+using namespace wave;
+
 #define GET_OP_CLASSES
 #include "water/Dialect/Wave/IR/WaveOps.cpp.inc"
 
@@ -25,10 +28,11 @@ static void updateNegativeIndices(llvm::MutableArrayRef<int> indices,
 // Verify that specified dimensions match between LHS and RHS, the lists of
 // dimensions are expected to be co-indexed. Emit diagnostic errors and return
 // failure when it is not the case.
-static mlir::LogicalResult verifyTypesMatchingDimensions(
-    mlir::Location loc, llvm::StringRef lhsName, wave::WaveTensorType lhs,
-    llvm::ArrayRef<int> lhsDims, llvm::StringRef rhsName,
-    wave::WaveTensorType rhs, llvm::ArrayRef<int> rhsDims) {
+static LogicalResult
+verifyTypesMatchingDimensions(Location loc, llvm::StringRef lhsName,
+                              WaveTensorType lhs, llvm::ArrayRef<int> lhsDims,
+                              llvm::StringRef rhsName, WaveTensorType rhs,
+                              llvm::ArrayRef<int> rhsDims) {
   // TODO: check whether it is possible to turn this into a trait.
 
   assert(lhsDims.size() == rhsDims.size() &&
@@ -36,42 +40,44 @@ static mlir::LogicalResult verifyTypesMatchingDimensions(
 
   // Under-specified types are okay everywhere.
   if (!lhs.getFullySpecified() || !rhs.getFullySpecified())
-    return mlir::success();
+    return success();
 
   llvm::SmallVector<int> lhsDimsVec(lhsDims), rhsDimsVec(rhsDims);
   updateNegativeIndices(lhsDimsVec, lhs.getRank());
   updateNegativeIndices(rhsDimsVec, rhs.getRank());
   for (auto &&[lhsDim, rhsDim] : llvm::zip_equal(lhsDimsVec, rhsDimsVec)) {
-    wave::WaveSymbolAttr lhsExpr = lhs.getShape()[lhsDim];
-    wave::WaveSymbolAttr rhsExpr = rhs.getShape()[rhsDim];
+    WaveSymbolAttr lhsExpr = lhs.getShape()[lhsDim];
+    WaveSymbolAttr rhsExpr = rhs.getShape()[rhsDim];
     if (lhsExpr == rhsExpr)
       continue;
 
-    return mlir::emitError(loc)
-           << "expected " << lhsName << " dimension #" << lhsDim << " ("
-           << lhsExpr << ") to match " << rhsName << " dimension #" << rhsDim
-           << " (" << rhsExpr << ")";
+    return emitError(loc) << "expected " << lhsName << " dimension #" << lhsDim
+                          << " (" << lhsExpr << ") to match " << rhsName
+                          << " dimension #" << rhsDim << " (" << rhsExpr << ")";
   }
-  return mlir::success();
+  return success();
 }
 
 // Verify that element types of Wave tensors match between LHS and RHS. Emit
 // diagnostic errors and return a failure when it is not the case.
-static mlir::LogicalResult verifyElementTypesMatch(mlir::Location loc,
-                                                   llvm::StringRef lhsName,
-                                                   wave::WaveTensorType lhs,
-                                                   llvm::StringRef rhsName,
-                                                   wave::WaveTensorType rhs) {
+static LogicalResult verifyElementTypesMatch(Location loc,
+                                             llvm::StringRef lhsName,
+                                             WaveTensorType lhs,
+                                             llvm::StringRef rhsName,
+                                             WaveTensorType rhs) {
   if (lhs.getElementType() == rhs.getElementType())
-    return mlir::success();
+    return success();
 
-  return mlir::emitError(loc)
-         << "expected " << lhsName << " and " << rhsName
-         << " elemental types to match, got " << lhs.getElementType() << ", "
-         << rhs.getElementType();
+  return emitError(loc) << "expected " << lhsName << " and " << rhsName
+                        << " elemental types to match, got "
+                        << lhs.getElementType() << ", " << rhs.getElementType();
 }
 
-mlir::LogicalResult wave::MmaOp::verify() {
+//===----------------------------------------------------------------------===//
+// MmaOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult MmaOp::verify() {
   WaveTensorType lhsType = getLhs().getType();
   WaveTensorType rhsType = getRhs().getType();
   WaveTensorType accumulatorType = getAccumulator().getType();
@@ -80,9 +86,9 @@ mlir::LogicalResult wave::MmaOp::verify() {
           verifyElementTypesMatch(getLoc(), "LHS", lhsType, "RHS", rhsType)) ||
       failed(verifyElementTypesMatch(getLoc(), "LHS", lhsType, "accumulator",
                                      accumulatorType)))
-    return mlir::failure();
+    return failure();
 
-  return mlir::failure(
+  return failure(
       verifyTypesMatchingDimensions(getLoc(), "LHS", lhsType, {1}, "RHS",
                                     rhsType, {0})
           .failed() ||
@@ -92,4 +98,61 @@ mlir::LogicalResult wave::MmaOp::verify() {
       verifyTypesMatchingDimensions(getLoc(), "RHS", rhsType, {1},
                                     "accumulator", accumulatorType, {1})
           .failed());
+}
+
+//===----------------------------------------------------------------------===//
+// RegisterOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult RegisterOp::verify() {
+  WaveRegisterType resultType = getResult().getType();
+  Type elementType = resultType.getElementType();
+  Attribute valueAttr = getValue();
+
+  if (auto typedAttr = dyn_cast<TypedAttr>(valueAttr)) {
+    Type attrType = typedAttr.getType();
+
+    // Exact type match is always valid.
+    if (attrType == elementType)
+      return success();
+
+    // Allow conversion between compatible numeric types.
+    // TODO: Possibly add tighter restrictions on which attributes are supported
+    if (elementType.isIntOrIndexOrFloat() && attrType.isIntOrIndexOrFloat())
+      return success();
+  }
+  return emitOpError("value attribute (")
+         << valueAttr << ") is not compatible with register element type ("
+         << elementType << ")";
+}
+
+ParseResult RegisterOp::parse(OpAsmParser &parser, OperationState &result) {
+  Attribute valueAttr;
+  Type resultType;
+
+  // Parse: '(' value ')'
+  if (parser.parseLParen() || parser.parseAttribute(valueAttr) ||
+      parser.parseRParen())
+    return failure();
+
+  // Parse optional attributes.
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+
+  // Parse: ':' result_type
+  if (parser.parseColon() || parser.parseType(resultType))
+    return failure();
+
+  result.addAttribute("value", valueAttr);
+  result.addTypes(resultType);
+  return success();
+}
+
+void RegisterOp::print(OpAsmPrinter &printer) {
+  printer << " (";
+  printer.printAttribute(getValue());
+  printer << ")";
+  printer.printOptionalAttrDict((*this)->getAttrs(), /*elidedAttrs=*/{"value"});
+  printer << " : ";
+  printer.printType(getResult().getType());
 }

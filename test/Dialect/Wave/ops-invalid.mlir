@@ -32,3 +32,19 @@ func.func @mismatch_dim_rhs_acc(%lhs: !wave.tensor<[@A, @B] of f32>, %rhs: !wave
   // expected-error @below {{expected RHS dimension #1 (#wave.symbol<"C">) to match accumulator dimension #1 (#wave.symbol<"D">)}}
   wave.mma %lhs, %rhs, %acc : (!wave.tensor<[@A, @B] of f32>, !wave.tensor<[@B, @C] of f32>, !wave.tensor<[@A, @D] of f32>) -> !wave.tensor<[@A, @D] of f32>
 }
+
+// -----
+
+func.func @register_invalid_value_type() {
+  // expected-error @below {{value attribute (unit) is not compatible with register element type ('f32')}}
+  %0 = wave.register(unit) : !wave.register<[@M, @N] of f32>
+  return
+}
+
+// -----
+
+func.func @register_invalid_array_value() {
+  // expected-error @below {{value attribute ([1, 2, 3]) is not compatible with register element type ('i32')}}
+  %0 = wave.register([1, 2, 3]) : !wave.register<[@M, @N] of i32>
+  return
+}

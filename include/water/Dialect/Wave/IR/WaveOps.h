@@ -7,6 +7,7 @@
 #ifndef WATER_DIALECT_WAVE_IR_WAVEOPS_H
 #define WATER_DIALECT_WAVE_IR_WAVEOPS_H
 
+#include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/IR/OpDefinition.h"
 #include "water/Dialect/Wave/IR/WaveTypes.h"
 

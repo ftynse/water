@@ -44,4 +44,32 @@ def WaveTensorType : TypeDef<WaveDialect, "WaveTensor"> {
   }];
 }
 
+def WaveRegisterType : TypeDef<WaveDialect, "WaveRegister"> {
+  let mnemonic = "register";
+  let description = [{
+    Register type with symbolic shapes used in Wave dialects. Similar to
+    WaveTensorType but represents a register storage location with a specific
+    data type and shape.
+  }];
+
+  let parameters = (ins
+    ArrayRefParameter<
+      "::wave::WaveSymbolAttr",
+      "Shape of the register when fully inferred">:$shape,
+    TypeParameter<"bool", "">:$fully_specified,
+    TypeParameter<"::mlir::Type", "Type of the register elements">:$element_type
+  );
+
+  let assemblyFormat = "`<` custom<TensorShape>($shape, $fully_specified) `of` $element_type `>`";
+  let genVerifyDecl = 1;
+
+  let extraClassDeclaration = [{
+    // Return the rank of the register.
+    size_t getRank() {
+      assert(getFullySpecified() && "requested rank of an under-specified register");
+      return getShape().size();
+    }
+  }];
+}
+
 #endif // WATER_DIALECT_WAVE_WAVETYPES
