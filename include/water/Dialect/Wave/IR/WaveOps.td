@@ -9,6 +9,8 @@ include "water/Dialect/Wave/IR/WaveDialect.td"
 include "water/Dialect/Wave/IR/WaveTypes.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/IR/CommonAttrConstraints.td"
+include "mlir/IR/BuiltinAttributeInterfaces.td"
 
 #ifndef WATER_DIALECT_WAVE_WAVEOPS
 #define WATER_DIALECT_WAVE_WAVEOPS
@@ -220,6 +222,34 @@ def WriteOp : Op<WaveDialect, "write"> {
 
   let assemblyFormat = "$value_to_store `,` $memory attr-dict `:`"
                        "type($value_to_store) `,` type($memory)";
+}
+
+def RegisterOp : Op<WaveDialect, "register"> {
+  let summary = "Create a new register with specified shape, data type, and initial value";
+  let description = [{
+    The `wave.register` operation creates a new register storage location with
+    symbolic shape dimensions, element data type, and an initial value. This
+    operation is used to allocate register storage that can be used in subsequent
+    Wave dialect operations.
+
+    The initial value is specified as a typed attribute and must be compatible with
+    the element type of the result register.
+
+    Example:
+    ```mlir
+    %reg = wave.register(0.0) : !wave.register<[@M, @N] of f32>
+    %reg2 = wave.register(42) : !wave.register<[@X, @Y] of i32>
+    ```
+  }];
+
+  let arguments = (ins AnyAttr:$value);
+
+  let results = (outs
+    Res<WaveRegisterType, "The created register">:$result
+  );
+
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
 }
 
 #endif // WATER_DIALECT_WAVE_WAVEOPS

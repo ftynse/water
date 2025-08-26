@@ -80,3 +80,19 @@ mlir::LogicalResult wave::WaveTensorType::verify(
   }
   return mlir::success();
 }
+
+mlir::LogicalResult wave::WaveRegisterType::verify(
+    llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+    llvm::ArrayRef<wave::WaveSymbolAttr> shape, bool fullySpecified,
+    mlir::Type elementType) {
+  if (!fullySpecified && !shape.empty()) {
+    return emitError()
+           << "shape not expected for non-fully specified registers";
+  }
+
+  if (!elementType.isIntOrIndexOrFloat()) {
+    return emitError() << "expected element type to be integer, index or "
+                          "floating point scalar";
+  }
+  return mlir::success();
+}

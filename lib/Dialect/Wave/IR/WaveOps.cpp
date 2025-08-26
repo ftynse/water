@@ -66,6 +66,9 @@ static void printSingleSymbol(mlir::OpAsmPrinter &printer, mlir::Operation *,
   printer.printSymbolName(symbolAttr.getName());
 }
 
+using namespace mlir;
+using namespace wave;
+
 #define GET_OP_CLASSES
 #include "water/Dialect/Wave/IR/WaveOps.cpp.inc"
 
@@ -99,14 +102,14 @@ verifyTypesMatchingDimensions(std::optional<mlir::Location> loc,
 
   // Under-specified types are okay everywhere.
   if (!lhs.getFullySpecified() || !rhs.getFullySpecified())
-    return mlir::success();
+    return success();
 
   llvm::SmallVector<int> lhsDimsVec(lhsDims), rhsDimsVec(rhsDims);
   updateNegativeIndices(lhsDimsVec, lhs.getRank());
   updateNegativeIndices(rhsDimsVec, rhs.getRank());
   for (auto &&[lhsDim, rhsDim] : llvm::zip_equal(lhsDimsVec, rhsDimsVec)) {
-    wave::WaveSymbolAttr lhsExpr = lhs.getShape()[lhsDim];
-    wave::WaveSymbolAttr rhsExpr = rhs.getShape()[rhsDim];
+    WaveSymbolAttr lhsExpr = lhs.getShape()[lhsDim];
+    WaveSymbolAttr rhsExpr = rhs.getShape()[rhsDim];
     if (lhsExpr == rhsExpr)
       continue;
 
@@ -118,7 +121,7 @@ verifyTypesMatchingDimensions(std::optional<mlir::Location> loc,
     }
     return mlir::failure();
   }
-  return mlir::success();
+  return success();
 }
 
 // Verify that element types of Wave tensors match between LHS and RHS. Emit
@@ -128,7 +131,7 @@ verifyElementTypesMatch(std::optional<mlir::Location> loc,
                         llvm::StringRef lhsName, wave::WaveTensorType lhs,
                         llvm::StringRef rhsName, wave::WaveTensorType rhs) {
   if (lhs.getElementType() == rhs.getElementType())
-    return mlir::success();
+    return success();
 
   if (loc) {
     mlir::emitError(*loc) << "expected " << lhsName << " and " << rhsName
@@ -338,7 +341,11 @@ static mlir::LogicalResult checkMmaTypeCompatibility(mlir::Location loc,
   return mlir::success(success);
 }
 
-mlir::LogicalResult wave::MmaOp::verify() {
+//===----------------------------------------------------------------------===//
+// MmaOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult MmaOp::verify() {
   WaveTensorType lhsType = getLhs().getType();
   WaveTensorType rhsType = getRhs().getType();
   WaveTensorType accumulatorType = getAccumulator().getType();
@@ -391,4 +398,61 @@ mlir::LogicalResult wave::RegisterOp::verify() {
 mlir::MutableOperandRange
 wave::YieldOp::getMutableSuccessorOperands(mlir::RegionBranchPoint) {
   return getValuesMutable();
+}
+
+//===----------------------------------------------------------------------===//
+// RegisterOp
+//===----------------------------------------------------------------------===//
+
+// LogicalResult RegisterOp::verify() {
+//   WaveRegisterType resultType = getResult().getType();
+//   Type elementType = resultType.getElementType();
+//   Attribute valueAttr = getValue();
+
+//   if (auto typedAttr = dyn_cast<TypedAttr>(valueAttr)) {
+//     Type attrType = typedAttr.getType();
+
+//     // Exact type match is always valid.
+//     if (attrType == elementType)
+//       return success();
+
+//     // Allow conversion between compatible numeric types.
+//     // TODO: Possibly add tighter restrictions on which attributes are supported
+//     if (elementType.isIntOrIndexOrFloat() && attrType.isIntOrIndexOrFloat())
+//       return success();
+//   }
+//   return emitOpError("value attribute (")
+//          << valueAttr << ") is not compatible with register element type ("
+//          << elementType << ")";
+// }
+
+ParseResult RegisterOp::parse(OpAsmParser &parser, OperationState &result) {
+  Attribute valueAttr;
+  Type resultType;
+
+  // Parse: '(' value ')'
+  if (parser.parseLParen() || parser.parseAttribute(valueAttr) ||
+      parser.parseRParen())
+    return failure();
+
+  // Parse optional attributes.
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+
+  // Parse: ':' result_type
+  if (parser.parseColon() || parser.parseType(resultType))
+    return failure();
+
+  result.addAttribute("value", valueAttr);
+  result.addTypes(resultType);
+  return success();
+}
+
+void RegisterOp::print(OpAsmPrinter &printer) {
+  printer << " (";
+  printer.printAttribute(getValue());
+  printer << ")";
+  printer.printOptionalAttrDict((*this)->getAttrs(), /*elidedAttrs=*/{"value"});
+  printer << " : ";
+  printer.printType(getResult().getType());
 }

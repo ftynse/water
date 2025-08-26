@@ -80,3 +80,19 @@ func.func @iterate_mismatching_results(%arg0: !wave.tensor<[@A] of f32>, %arg1: 
     wave.yield %arg2, %arg3 : !wave.tensor<[@B] of f32>, !wave.tensor<any of f32>
   } : (!wave.tensor<[@A] of f32>, !wave.tensor<any of f32>) -> (!wave.tensor<any of f32>, !wave.tensor<any of f32>)
 }
+
+// -----
+
+func.func @register_invalid_value_type() {
+  // expected-error @below {{value attribute (unit) is not compatible with register element type ('f32')}}
+  %0 = wave.register(unit) : !wave.register<[@M, @N] of f32>
+  return
+}
+
+// -----
+
+func.func @register_invalid_array_value() {
+  // expected-error @below {{value attribute ([1, 2, 3]) is not compatible with register element type ('i32')}}
+  %0 = wave.register([1, 2, 3]) : !wave.register<[@M, @N] of i32>
+  return
+}
