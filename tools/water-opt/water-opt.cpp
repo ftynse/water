@@ -24,6 +24,7 @@
 #include "mlir/Transforms/Passes.h"
 
 #include "water/Dialect/Wave/IR/WaveDialect.h"
+#include "water/Dialect/Wave/Transforms/Passes.h"
 #include "water/Tools/water-opt/WaterOptMain.h"
 #include "water/Transforms/Passes.h"
 
@@ -31,12 +32,13 @@
 // headers.
 namespace mlir::water::test {
 void registerAllPasses();
+void registerWaterTestDialect(DialectRegistry &registry);
 } // namespace mlir::water::test
 
 int main(int argc, char **argv) {
   mlir::water::registerPasses();
   mlir::water::test::registerAllPasses();
-
+  wave::registerPasses();
   mlir::arith::registerArithIntRangeOptsPass();
   mlir::registerCanonicalizerPass();
   mlir::registerCSEPass();
@@ -50,6 +52,8 @@ int main(int argc, char **argv) {
                   mlir::LLVM::LLVMDialect, mlir::memref::MemRefDialect,
                   mlir::scf::SCFDialect, mlir::vector::VectorDialect,
                   wave::WaveDialect>();
+
+  mlir::water::test::registerWaterTestDialect(registry);
 
   return mlir::asMainReturnCode(
       WaterOptMain(argc, argv, "water optimizer driver\n", registry));

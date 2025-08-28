@@ -4,16 +4,18 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef WATER_DIALECT_WAVE_IR_WAVEOPS_H
-#define WATER_DIALECT_WAVE_IR_WAVEOPS_H
+#ifndef WATER_TEST_LIB_DIALECT_WATERTESTDIALECT_H
+#define WATER_TEST_LIB_DIALECT_WATERTESTDIALECT_H
 
 #include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/IR/OpDefinition.h"
-#include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "water/Dialect/Wave/IR/WaveInterfaces.h"
 #include "water/Dialect/Wave/IR/WaveTypes.h"
 
-#define GET_OP_CLASSES
-#include "water/Dialect/Wave/IR/WaveOps.h.inc"
+#include "WaterTestDialect.h.inc"
+#include "mlir/IR/Dialect.h"
 
-#endif // WATER_DIALECT_WAVE_IR_WAVEOPS_H
+#define GET_OP_CLASSES
+#include "WaterTestDialectOps.h.inc"
+
+#endif // WATER_TEST_LIB_DIALECT_WATERTESTDIALECT_H
