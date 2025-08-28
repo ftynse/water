@@ -89,4 +89,47 @@ def WaveSymbolAttr : AttrDef<WaveDialect, "WaveSymbol"> {
   }];
 }
 
+def WaveIndexMappingAttr : AttrDef<WaveDialect, "WaveIndexMapping"> {
+  let mnemonic = "index_mapping";
+  let description = [{
+    An affine map with named symbols for Wave indexing expressions.
+
+    This attribute preserves meaningful symbol names (e.g., WG0, BLOCK_M, T0)
+    while storing an affine map internally. The symbol_names array
+    corresponds 1:1 to the symbols in the affine map, where s0 maps to
+    symbol_names[0], s1 to symbol_names[1], etc.
+
+    Custom syntax: [symbol_names] -> (affine_expression)
+    Example: [WG0, BLOCK_M] -> (WG0 * BLOCK_M + 42)
+  }];
+
+  let parameters = (ins
+    "::mlir::ArrayAttr":$symbol_names,
+    "::mlir::AffineMapAttr":$affine_map
+  );
+
+  let hasCustomAssemblyFormat = 1;
+
+  let extraClassDeclaration = [{
+    /// Get the symbol name at the given index.
+    ::llvm::StringRef getSymbolName(unsigned index) {
+      auto names = getSymbolNames().getValue();
+      if (index >= names.size()) return ::llvm::StringRef();
+      return ::mlir::cast<::mlir::StringAttr>(names[index]).getValue();
+    }
+
+    /// Get all symbol names as a vector of string references.
+    ::llvm::SmallVector<::llvm::StringRef> getAllSymbolNames() const {
+      ::llvm::SmallVector<::llvm::StringRef> result;
+      for (auto attr : getSymbolNames().getValue()) {
+        result.push_back(::mlir::cast<::mlir::StringAttr>(attr).getValue());
+      }
+      return result;
+    }
+
+    /// Get the underlying affine map.
+    ::mlir::AffineMap getMap() { return getAffineMap().getValue(); }
+  }];
+}
+
 #endif // WATER_DIALECT_WAVE_WAVEATTRS

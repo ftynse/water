@@ -96,3 +96,19 @@ func.func @register_invalid_array_value() {
   %0 = wave.register([1, 2, 3]) : !wave.register<[@M, @N] of i32>
   return
 }
+
+// -----
+
+func.func @register_invalid_index_symbol() -> !wave.register<[@M, @N] of f32> {
+  // expected-error @+1 {{index symbol 'X' does not correspond to any dimension in register type}}
+  %0 = wave.register(0.0) index {X : [WG0, BLOCK_M] -> (WG0 * BLOCK_M)} : !wave.register<[@M, @N] of f32>
+  return %0 : !wave.register<[@M, @N] of f32>
+}
+
+// -----
+
+func.func @register_case_sensitive_symbol() -> !wave.register<[@M, @N] of f32> {
+  // expected-error @+1 {{index symbol 'm' does not correspond to any dimension in register type}}
+  %0 = wave.register(0.0) index {m : [WG0, BLOCK_M] -> (WG0 * BLOCK_M)} : !wave.register<[@M, @N] of f32>
+  return %0 : !wave.register<[@M, @N] of f32>
+}

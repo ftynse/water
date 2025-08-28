@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "water/Dialect/Wave/IR/WaveOps.h"
+#include "water/Dialect/Wave/IR/WaveAttrs.h"
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -404,27 +405,66 @@ wave::YieldOp::getMutableSuccessorOperands(mlir::RegionBranchPoint) {
 // RegisterOp
 //===----------------------------------------------------------------------===//
 
-// LogicalResult RegisterOp::verify() {
-//   WaveRegisterType resultType = getResult().getType();
-//   Type elementType = resultType.getElementType();
-//   Attribute valueAttr = getValue();
+LogicalResult RegisterOp::verify() {
+  WaveRegisterType resultType = getResult().getType();
+  Type elementType = resultType.getElementType();
+  Attribute valueAttr = getValue();
 
-//   if (auto typedAttr = dyn_cast<TypedAttr>(valueAttr)) {
-//     Type attrType = typedAttr.getType();
+  // Verify value attribute compatibility
+  auto typedAttr = dyn_cast<TypedAttr>(valueAttr);
+  if (!typedAttr) {
+    return emitOpError("value attribute (")
+           << valueAttr << ") is not compatible with register element type ("
+           << elementType << ")";
+  }
 
-//     // Exact type match is always valid.
-//     if (attrType == elementType)
-//       return success();
+  Type attrType = typedAttr.getType();
+  if (!((attrType == elementType) || (elementType.isIntOrIndexOrFloat() &&
+                                      attrType.isIntOrIndexOrFloat()))) {
+    return emitOpError("value attribute (")
+           << valueAttr << ") is not compatible with register element type ("
+           << elementType << ")";
+  }
+  // TODO: Possibly add tighter restrictions on which types are supported for
+  // value
 
-//     // Allow conversion between compatible numeric types.
-//     // TODO: Possibly add tighter restrictions on which attributes are supported
-//     if (elementType.isIntOrIndexOrFloat() && attrType.isIntOrIndexOrFloat())
-//       return success();
-//   }
-//   return emitOpError("value attribute (")
-//          << valueAttr << ") is not compatible with register element type ("
-//          << elementType << ")";
-// }
+  // Verify index attribute if present
+  if (auto indexAttr = getIndexAttr()) {
+    // Check that all values in the dictionary are WaveIndexMappingAttr
+    for (auto namedAttr : indexAttr.getValue()) {
+      if (!isa<WaveIndexMappingAttr>(namedAttr.getValue())) {
+        return emitOpError(
+                   "index attribute values must be WaveIndexMappingAttr, got ")
+               << namedAttr.getValue();
+      }
+
+      auto mappingAttr = cast<WaveIndexMappingAttr>(namedAttr.getValue());
+      AffineMap map = mappingAttr.getMap();
+
+      // Verify the affine map has no dimensions, only symbols
+      if (map.getNumDims() != 0) {
+        return emitOpError(
+                   "wave indexing affine maps should have no dimensions, only "
+                   "symbols, got ")
+               << map.getNumDims() << " dimensions for symbol "
+               << namedAttr.getName();
+      }
+
+      // Check that the symbol name corresponds to a dimension in the register
+      // type
+      StringRef indexSymbolName = namedAttr.getName().getValue();
+      if (!llvm::any_of(resultType.getShape(), [&](auto dimSymbol) {
+            return dimSymbol.getName() == indexSymbolName;
+          })) {
+        return emitOpError("index symbol '")
+               << indexSymbolName
+               << "' does not correspond to any dimension in register type";
+      }
+    }
+  }
+
+  return success();
+}
 
 ParseResult RegisterOp::parse(OpAsmParser &parser, OperationState &result) {
   Attribute valueAttr;
@@ -434,6 +474,37 @@ ParseResult RegisterOp::parse(OpAsmParser &parser, OperationState &result) {
   if (parser.parseLParen() || parser.parseAttribute(valueAttr) ||
       parser.parseRParen())
     return failure();
+
+  // Parse optional index attribute: 'index' '{' symbol ':' mapping (',' symbol
+  // ':' mapping)* '}'
+  if (succeeded(parser.parseOptionalKeyword("index"))) {
+    SmallVector<NamedAttribute> indexMappings;
+
+    if (failed(parser.parseLBrace()))
+      return failure();
+
+    auto parseMapping = [&]() {
+      StringRef symbolName;
+      if (failed(parser.parseKeyword(&symbolName)) ||
+          failed(parser.parseColon()))
+        return failure();
+
+      // Try to parse as WaveIndexMappingAttr using custom parsing
+      auto indexMapping = WaveIndexMappingAttr::parse(parser, Type{});
+      if (!indexMapping) {
+        return failure();
+      }
+      indexMappings.push_back(
+          {parser.getBuilder().getStringAttr(symbolName), indexMapping});
+      return success();
+    };
+
+    if (parser.parseCommaSeparatedList(parseMapping) || parser.parseRBrace())
+      return failure();
+
+    result.addAttribute("index",
+                        parser.getBuilder().getDictionaryAttr(indexMappings));
+  }
 
   // Parse optional attributes.
   if (parser.parseOptionalAttrDict(result.attributes))
@@ -452,7 +523,25 @@ void RegisterOp::print(OpAsmPrinter &printer) {
   printer << " (";
   printer.printAttribute(getValue());
   printer << ")";
-  printer.printOptionalAttrDict((*this)->getAttrs(), /*elidedAttrs=*/{"value"});
+
+  // Print index attribute using custom syntax
+  if (auto indexAttr = getIndexAttr()) {
+    printer << " index {";
+    llvm::interleaveComma(
+        indexAttr.getValue(), printer, [&](NamedAttribute namedAttr) {
+          printer << namedAttr.getName().getValue() << " : ";
+          if (auto mappingAttr =
+                  dyn_cast<WaveIndexMappingAttr>(namedAttr.getValue())) {
+            mappingAttr.print(printer);
+          } else {
+            printer.printAttribute(namedAttr.getValue());
+          }
+        });
+    printer << "}";
+  }
+
+  printer.printOptionalAttrDict((*this)->getAttrs(),
+                                /*elidedAttrs=*/{"value", "index"});
   printer << " : ";
   printer.printType(getResult().getType());
 }

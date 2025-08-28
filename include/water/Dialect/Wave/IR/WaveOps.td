@@ -7,6 +7,7 @@
 include "water/Dialect/Wave/IR/WaveAttrs.td"
 include "water/Dialect/Wave/IR/WaveDialect.td"
 include "water/Dialect/Wave/IR/WaveTypes.td"
+include "water/Dialect/Wave/IR/WaveAttrs.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/IR/CommonAttrConstraints.td"
@@ -235,14 +236,25 @@ def RegisterOp : Op<WaveDialect, "register"> {
     The initial value is specified as a typed attribute and must be compatible with
     the element type of the result register.
 
-    Example:
+    The optional `index` attribute defines indexing expressions for each dimension
+    of the register using meaningful symbol names and affine expressions. Each
+    dimension symbol is mapped to an affine expression with named symbols.
+
+    Examples:
     ```mlir
     %reg = wave.register(0.0) : !wave.register<[@M, @N] of f32>
-    %reg2 = wave.register(42) : !wave.register<[@X, @Y] of i32>
+
+    %reg2 = wave.register(42.0) index {
+      M : [WG0, BLOCK_M] -> (WG0 * BLOCK_M),
+      N : [T1, BLOCK_N] -> (T1 * BLOCK_N + 8)
+    } : !wave.register<[@M, @N] of f32>
     ```
   }];
 
-  let arguments = (ins AnyAttr:$value);
+  let arguments = (ins
+    AnyAttr:$value,
+    OptionalAttr<DictionaryAttr>:$index
+  );
 
   let results = (outs
     Res<WaveRegisterType, "The created register">:$result
