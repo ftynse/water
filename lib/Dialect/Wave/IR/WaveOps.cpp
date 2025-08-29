@@ -75,137 +75,13 @@ using namespace wave;
 #include "water/Dialect/Wave/IR/WaveOps.cpp.inc"
 
 //-----------------------------------------------------------------------------
-// Verification helpers
-//-----------------------------------------------------------------------------
-
-// Update negative indices in the array to positive equivalents given the total
-// rank, e.g. -1 and -3 get updated to 3 and 1, respectively, for the rank of 4.
-static void updateNegativeIndices(llvm::MutableArrayRef<int> indices,
-                                  int rank) {
-  for (int &index : indices) {
-    if (index < 0)
-      index += rank;
-  }
-}
-
-// Verify that specified dimensions match between LHS and RHS, the lists of
-// dimensions are expected to be co-indexed. Emit diagnostic errors and
-// return failure when it is not the case.
-static mlir::LogicalResult
-verifyTypesMatchingDimensions(std::optional<mlir::Location> loc,
-                              llvm::StringRef lhsName, wave::WaveTensorType lhs,
-                              llvm::ArrayRef<int> lhsDims,
-                              llvm::StringRef rhsName, wave::WaveTensorType rhs,
-                              llvm::ArrayRef<int> rhsDims) {
-  // TODO: check whether it is possible to turn this into a trait.
-
-  assert(lhsDims.size() == rhsDims.size() &&
-         "expected lhs and rhs dim lists to be co-indexed");
-
-  // Under-specified types are okay everywhere.
-  if (!lhs.getFullySpecified() || !rhs.getFullySpecified())
-    return success();
-
-  llvm::SmallVector<int> lhsDimsVec(lhsDims), rhsDimsVec(rhsDims);
-  updateNegativeIndices(lhsDimsVec, lhs.getRank());
-  updateNegativeIndices(rhsDimsVec, rhs.getRank());
-  for (auto &&[lhsDim, rhsDim] : llvm::zip_equal(lhsDimsVec, rhsDimsVec)) {
-    WaveSymbolAttr lhsExpr = lhs.getShape()[lhsDim];
-    WaveSymbolAttr rhsExpr = rhs.getShape()[rhsDim];
-    if (lhsExpr == rhsExpr)
-      continue;
-
-    if (loc) {
-      mlir::emitError(*loc)
-          << "expected " << lhsName << " dimension #" << lhsDim << " ("
-          << lhsExpr << ") to match " << rhsName << " dimension #" << rhsDim
-          << " (" << rhsExpr << ")";
-    }
-    return mlir::failure();
-  }
-  return success();
-}
-
-// Verify that element types of Wave tensors match between LHS and RHS. Emit
-// diagnostic errors and return a failure when it is not the case.
-static mlir::LogicalResult
-verifyElementTypesMatch(std::optional<mlir::Location> loc,
-                        llvm::StringRef lhsName, wave::WaveTensorType lhs,
-                        llvm::StringRef rhsName, wave::WaveTensorType rhs) {
-  if (lhs.getElementType() == rhs.getElementType())
-    return success();
-
-  if (loc) {
-    mlir::emitError(*loc) << "expected " << lhsName << " and " << rhsName
-                          << " elemental types to match, got "
-                          << lhs.getElementType() << ", "
-                          << rhs.getElementType();
-  }
-  return mlir::failure();
-}
-
-// Verify if two types are compatible:
-//   - their symbolic shapes are either equal or at least one of them is
-//     underspecified;
-//   - their address spaces are either equal or at least one of them is
-//     underspecified.
-// When it is not the case, return failure and optionally report an error if a
-// location is provided.
-static mlir::LogicalResult verifyTypesCompatible(
-    wave::WaveTensorType lhs, wave::WaveTensorType rhs,
-    bool includeAddressSpace,
-    std::optional<mlir::Location> errorLocation = std::nullopt,
-    llvm::StringRef lhsName = "", llvm::StringRef rhsName = "") {
-  // Fast and cheap path.
-  if (lhs == rhs)
-    return mlir::success();
-
-  if (errorLocation) {
-    assert(!lhsName.empty() && !rhsName.empty() &&
-           "expected names when location is provided");
-  }
-
-  if (includeAddressSpace) {
-    if (lhs.getAddressSpaceValue() != rhs.getAddressSpaceValue() &&
-        lhs.getAddressSpaceValue() != wave::WaveAddressSpace::Unspecified &&
-        rhs.getAddressSpaceValue() != wave::WaveAddressSpace::Unspecified) {
-      if (errorLocation) {
-        emitError(*errorLocation) << "address space mismatch between" << lhsName
-                                  << " and " << rhsName;
-      }
-      return mlir::failure();
-    }
-  }
-
-  if (mlir::failed(
-          verifyElementTypesMatch(errorLocation, lhsName, lhs, rhsName, rhs)))
-    return mlir::failure();
-
-  if (!lhs.getFullySpecified() || !rhs.getFullySpecified())
-    return mlir::success();
-
-  if (lhs.getRank() != rhs.getRank()) {
-    if (errorLocation) {
-      emitError(*errorLocation)
-          << "rank mismatch between " << lhsName << " and " << rhsName;
-    }
-    return mlir::failure();
-  }
-
-  auto allDims = llvm::to_vector(llvm::iota_range<int>(0, lhs.getRank(),
-                                                       /*Inclusive=*/false));
-  return verifyTypesMatchingDimensions(errorLocation, lhsName, lhs, allDims,
-                                       rhsName, rhs, allDims);
-}
-
-//-----------------------------------------------------------------------------
 // IterateOp
 //-----------------------------------------------------------------------------
 
 bool wave::IterateOp::areTypesCompatible(mlir::Type lhs, mlir::Type rhs) {
-  return verifyTypesCompatible(llvm::cast<wave::WaveTensorType>(lhs),
-                               llvm::cast<wave::WaveTensorType>(rhs),
-                               /*includeAddressSpace=*/true)
+  return detail::verifyTypesCompatible(llvm::cast<wave::WaveTensorType>(lhs),
+                                       llvm::cast<wave::WaveTensorType>(rhs),
+                                       /*includeAddressSpace=*/true)
       .succeeded();
 }
 
@@ -242,7 +118,7 @@ mlir::LogicalResult wave::IterateOp::verify() {
         llvm::to_vector(llvm::iota_range<int>(0, iterArgTensor.getRank(),
                                               /*Inclusive=*/false));
     auto istr = std::to_string(i);
-    if (mlir::failed(verifyTypesMatchingDimensions(
+    if (mlir::failed(detail::verifyTypesMatchingDimensions(
             getLoc(), "iter_args #" + istr, iterArgTensor, allDims,
             "result #" + istr, resultTensor, allDims)))
       return mlir::failure();
@@ -378,20 +254,20 @@ LogicalResult MmaOp::verify() {
   WaveTensorType accumulatorType = getAccumulator().getType();
   WaveTensorType resultType = getResult().getType();
 
-  if (failed(
-          verifyElementTypesMatch(getLoc(), "LHS", lhsType, "RHS", rhsType)) ||
-      failed(verifyElementTypesMatch(getLoc(), "result", resultType,
-                                     "accumulator", accumulatorType)))
+  if (failed(detail::verifyElementTypesMatch(getLoc(), "LHS", lhsType, "RHS",
+                                             rhsType)) ||
+      failed(detail::verifyElementTypesMatch(getLoc(), "result", resultType,
+                                             "accumulator", accumulatorType)))
     return mlir::failure();
 
-  if (verifyTypesMatchingDimensions(getLoc(), "LHS", lhsType, {1}, "RHS",
-                                    rhsType, {0})
+  if (detail::verifyTypesMatchingDimensions(getLoc(), "LHS", lhsType, {1},
+                                            "RHS", rhsType, {0})
           .failed() ||
-      verifyTypesMatchingDimensions(getLoc(), "LHS", lhsType, {0},
-                                    "accumulator", accumulatorType, {0})
+      detail::verifyTypesMatchingDimensions(getLoc(), "LHS", lhsType, {0},
+                                            "accumulator", accumulatorType, {0})
           .failed() ||
-      verifyTypesMatchingDimensions(getLoc(), "RHS", rhsType, {1},
-                                    "accumulator", accumulatorType, {1})
+      detail::verifyTypesMatchingDimensions(getLoc(), "RHS", rhsType, {1},
+                                            "accumulator", accumulatorType, {1})
           .failed()) {
     return mlir::failure();
   }

@@ -111,6 +111,68 @@ public:
     return mlir::ChangeResult::NoChange;
   }
 };
+
+// Verify that element types of Wave tensors match between LHS and RHS. Emit
+// diagnostic errors and return a failure when it is not the case.
+namespace detail {
+llvm::LogicalResult verifyElementTypesMatch(std::optional<mlir::Location> loc,
+                                            llvm::StringRef lhsName,
+                                            wave::WaveTensorType lhs,
+                                            llvm::StringRef rhsName,
+                                            wave::WaveTensorType rhs);
+
+// Verify if two types are compatible:
+//   - their symbolic shapes are either equal or at least one of them is
+//     underspecified;
+//   - their address spaces are either equal or at least one of them is
+//     underspecified.
+// When it is not the case, return failure and optionally report an error if a
+// location is provided.
+llvm::LogicalResult verifyTypesCompatible(
+    wave::WaveTensorType lhs, wave::WaveTensorType rhs,
+    bool includeAddressSpace,
+    std::optional<mlir::Location> errorLocation = std::nullopt,
+    llvm::StringRef lhsName = "", llvm::StringRef rhsName = "");
+
+// Verify that specified dimensions match between LHS and RHS, the lists of
+// dimensions are expected to be co-indexed. Emit diagnostic errors and
+// return failure when it is not the case.
+llvm::LogicalResult
+verifyTypesMatchingDimensions(std::optional<mlir::Location> loc,
+                              llvm::StringRef lhsName, wave::WaveTensorType lhs,
+                              llvm::ArrayRef<int> lhsDims,
+                              llvm::StringRef rhsName, wave::WaveTensorType rhs,
+                              llvm::ArrayRef<int> rhsDims);
+
+// Verification logic for the compatible-operands traits. Succeeds if all wave
+// tensor-typed operands and results have compatible shapes and, if the
+// corresponding flag is set, compatible address spaces.
+llvm::LogicalResult
+verifyCompatibleOperandsAndResultsOpTrait(mlir::Operation *op,
+                                          bool includeAddressSpace);
+}; // namespace detail
+
+template <typename OpTy>
+class CompatibleOperandsAndResultsOpTrait
+    : public mlir::OpTrait::TraitBase<OpTy,
+                                      CompatibleOperandsAndResultsOpTrait> {
+public:
+  static llvm::LogicalResult verifyTrait(mlir::Operation *op) {
+    return detail::verifyCompatibleOperandsAndResultsOpTrait(
+        op, /*includeAddressSpace=*/true);
+  }
+};
+
+template <typename OpTy>
+class CompatibleOperandsAndResultsIgnoreSpaceOpTrait
+    : public mlir::OpTrait::TraitBase<
+          OpTy, CompatibleOperandsAndResultsIgnoreSpaceOpTrait> {
+public:
+  static llvm::LogicalResult verifyTrait(mlir::Operation *op) {
+    return detail::verifyCompatibleOperandsAndResultsOpTrait(
+        op, /*includeAddressSpace=*/false);
+  }
+};
 } // namespace wave
 
 #include "water/Dialect/Wave/IR/WaveOpInterfaces.h.inc"
