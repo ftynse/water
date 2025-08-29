@@ -30,7 +30,8 @@ class WaveArithmeticOpDoc {
 
 class UnaryWaveOp<string mnemonic>
     : Op<WaveDialect, mnemonic,
-         [WaveInferTypeOpInterface, IdentityTypeInferenceOpTrait]>,
+         [WaveInferTypeOpInterface, IdentityTypeInferenceOpTrait,
+          CompatibleOperandsAndResultsOpTrait]>,
       WaveArithmeticOpDoc {
 
   let arguments = (ins
@@ -47,7 +48,8 @@ class UnaryWaveOp<string mnemonic>
 
 class BinaryWaveOp<string mnemonic>
     : Op<WaveDialect, mnemonic,
-         [WaveInferTypeOpInterface, IdentityTypeInferenceOpTrait]>,
+         [WaveInferTypeOpInterface, IdentityTypeInferenceOpTrait,
+          CompatibleOperandsAndResultsOpTrait]>,
       WaveArithmeticOpDoc {
   let arguments = (ins
     Arg<WaveTensorInRegister, "Left-hand side">:$lhs,
@@ -171,7 +173,8 @@ def YieldOp : Op<WaveDialect, "yield",
 //-----------------------------------------------------------------------------
 
 def ReadOp : Op<WaveDialect, "read", [
-    WaveInferTypeOpInterface, IdentityTypeInferenceOpTrait]> {
+    WaveInferTypeOpInterface, IdentityTypeInferenceOpTrait,
+    CompatibleOperandsAndResultsIgnoreSpaceOpTrait]> {
   let summary = "Reads from memory";
   let description = [{
     Moves data from a memory-resident tensor to a register-resident tensor
@@ -214,7 +217,8 @@ def RegisterOp : Op<WaveDialect, "register", [
 }
 
 def WriteOp : Op<WaveDialect, "write", [
-    WaveInferTypeOpInterface, NoOpTypeInferenceOpTrait]> {
+    WaveInferTypeOpInterface, NoOpTypeInferenceOpTrait,
+    CompatibleOperandsAndResultsIgnoreSpaceOpTrait]> {
   let summary = "Writes into memory";
   let description = [{
     Moves data from a register-resident tensor into a memory-resident tensor
