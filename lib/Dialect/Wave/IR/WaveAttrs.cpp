@@ -26,7 +26,7 @@ using namespace wave;
 //===----------------------------------------------------------------------===//
 
 Attribute WaveIndexMappingAttr::parse(AsmParser &parser, Type type) {
-  // Parse custom syntax: '[' symbol-names ']' '->' '(' affine-expr ')'
+  // Parse custom syntax: '[' symbol-names ']' '->' '(' start, step, stride ')'
   // This preserves meaningful symbol names while leveraging the existing
   // affine parser.
 
@@ -53,75 +53,100 @@ Attribute WaveIndexMappingAttr::parse(AsmParser &parser, Type type) {
       return {};
   }
 
-  // Parse '->' '(' affine-expr ')'
+  // Parse affine expr triple: '->' '(' start_expr ',' step_expr ',' stride_expr
+  // ')'
   if (parser.parseArrow() || parser.parseLParen())
     return {};
 
-  auto context = parser.getContext();
+  MLIRContext *context = parser.getContext();
+  auto parseExprWithNames = [&](ArrayRef<StringRef> names,
+                                AffineExpr &outExpr) -> ParseResult {
+    SmallVector<std::pair<StringRef, AffineExpr>> symbolSet;
+    symbolSet.reserve(names.size());
+    for (auto [i, nm] : llvm::enumerate(names))
+      symbolSet.emplace_back(nm, getAffineSymbolExpr(i, context));
+    if (failed(parser.parseAffineExpr(symbolSet, outExpr)))
+      return failure();
+    return success();
+  };
 
-  // Create symbol mapping for affine expression parser
-  SmallVector<std::pair<StringRef, AffineExpr>> symbolSet;
-  for (auto [i, symbolName] : llvm::enumerate(symbolNames)) {
-    auto symbolExpr = getAffineSymbolExpr(i, context);
-    symbolSet.emplace_back(symbolName, symbolExpr);
-  }
-
-  // Parse affine expression with symbol names
-  AffineExpr parsedExpr;
-  if (parser.parseAffineExpr(symbolSet, parsedExpr).failed() ||
-      parser.parseRParen())
+  AffineExpr startExpr;
+  AffineExpr stepExpr;
+  AffineExpr strideExpr;
+  if (failed(parseExprWithNames(symbolNames, startExpr)))
+    return {};
+  if (parser.parseComma())
+    return {};
+  if (failed(parseExprWithNames(symbolNames, stepExpr)))
+    return {};
+  if (parser.parseComma())
+    return {};
+  if (failed(parseExprWithNames(symbolNames, strideExpr)))
     return {};
 
-  // Build the final attribute
-  auto affineMap = AffineMap::get(
-      /*numDims=*/0, /*numSymbols=*/symbolNames.size(), parsedExpr, context);
-  auto mapAttr = AffineMapAttr::get(affineMap);
-  ArrayAttr symbolNamesAttr = parser.getBuilder().getArrayAttr(symbolNameAttrs);
+  if (parser.parseRParen())
+    return {};
 
-  return get(parser.getContext(), symbolNamesAttr, mapAttr);
+  // Build maps
+  auto startMap = AffineMap::get(
+      /*numDims=*/0, /*numSymbols=*/symbolNames.size(), startExpr, context);
+  auto stepMap = AffineMap::get(
+      /*numDims=*/0, /*numSymbols=*/symbolNames.size(), stepExpr, context);
+  auto strideMap = AffineMap::get(
+      /*numDims=*/0, /*numSymbols=*/symbolNames.size(), strideExpr, context);
+
+  ArrayAttr symbolNamesAttr = parser.getBuilder().getArrayAttr(symbolNameAttrs);
+  return get(parser.getContext(), symbolNamesAttr, AffineMapAttr::get(startMap),
+             AffineMapAttr::get(stepMap), AffineMapAttr::get(strideMap));
 }
 
 void WaveIndexMappingAttr::print(AsmPrinter &printer) const {
-  // Print custom syntax: '[' symbol-names ']' '->' '(' affine-expr ')' with
-  // substituted symbol names
+  // Print '[' symbol-names '] -> (start, step, stride)'.
+  // We keep one global symbol list (symbol_names) for all three expressions.
+  // Each expression is an affine map with the same numSymbols; we substitute
+  // s0, s1, ... using the shared names when rendering each expression.
   printer << "[";
   llvm::interleaveComma(getSymbolNames().getAsRange<StringAttr>(), printer,
                         [&](StringAttr s) { printer << s.getValue(); });
   printer << "] -> ";
 
-  // Get the affine expr (uses s0, s1, ... for symbols) and render it to a
-  // string.
-  AffineMap map = getAffineMap().getValue();
-  AffineExpr expr = map.getResult(0);
-  std::string exprStr;
-  llvm::raw_string_ostream stream(exprStr);
-  expr.print(stream);
-  stream.flush();
-
-  // Substitute symbol names
-  auto symbolNames = getAllSymbolNames();
-  for (auto [i, symbolName] : llvm::enumerate(symbolNames)) {
-    std::string symbolPattern = "s" + std::to_string(i);
-
-    // Use regex-like replacement to avoid partial matches
-    size_t pos = 0;
-    while ((pos = exprStr.find(symbolPattern, pos)) != std::string::npos) {
-      // Check if this is a complete symbol (not part of a larger identifier)
-      bool isCompleteSymbol =
-          (pos == 0 || !std::isalnum(exprStr[pos - 1])) &&
-          (pos + symbolPattern.length() == exprStr.length() ||
-           !std::isalnum(exprStr[pos + symbolPattern.length()]));
-
-      if (isCompleteSymbol) {
-        exprStr.replace(pos, symbolPattern.length(), symbolName.str());
-        pos += symbolName.size();
-      } else {
-        pos += symbolPattern.length();
+  // Helper: render an affine map result to a string, then textual-substitute
+  // s<i> occurrences with the corresponding symbol_names[i].
+  auto stringifyWithNames = [&](AffineMap map,
+                                ArrayRef<StringRef> names) -> std::string {
+    AffineExpr expr = map.getResult(0);
+    std::string exprStr;
+    llvm::raw_string_ostream os(exprStr);
+    expr.print(os);
+    os.flush();
+    for (auto [i, nm] : llvm::enumerate(names)) {
+      std::string pattern = "s" + std::to_string(i);
+      size_t pos = 0;
+      while ((pos = exprStr.find(pattern, pos)) != std::string::npos) {
+        // Replace only when 'pattern' is a complete token (not embedded
+        // inside a longer identifier or number). We approximate token
+        // boundaries by checking that adjacent characters are non-alphanumeric.
+        bool isWhole = (pos == 0 || !std::isalnum(exprStr[pos - 1])) &&
+                       (pos + pattern.length() == exprStr.length() ||
+                        !std::isalnum(exprStr[pos + pattern.length()]));
+        if (isWhole) {
+          exprStr.replace(pos, pattern.length(), nm.str());
+          pos += nm.size();
+        } else {
+          pos += pattern.length();
+        }
       }
     }
-  }
+    return exprStr;
+  };
 
-  printer << "(" << exprStr << ")";
+  auto allNames = getAllSymbolNames();
+  // All three maps share the same symbol set and order.
+  auto startStr = stringifyWithNames(getStart().getValue(), allNames);
+  auto stepStr = stringifyWithNames(getStep().getValue(), allNames);
+  auto strideStr = stringifyWithNames(getStride().getValue(), allNames);
+
+  printer << "(" << startStr << ", " << stepStr << ", " << strideStr << ")";
 }
 
 void wave::WaveDialect::registerAttributes() {

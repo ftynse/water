@@ -95,17 +95,19 @@ def WaveIndexMappingAttr : AttrDef<WaveDialect, "WaveIndexMapping"> {
     An affine map with named symbols for Wave indexing expressions.
 
     This attribute preserves meaningful symbol names (e.g., WG0, BLOCK_M, T0)
-    while storing an affine map internally. The symbol_names array
-    corresponds 1:1 to the symbols in the affine map, where s0 maps to
-    symbol_names[0], s1 to symbol_names[1], etc.
+    while storing affine maps internally for start, step, and stride. The
+    symbol_names array corresponds 1:1 to the symbols in the affine
+    expressions, where s0 maps to symbol_names[0], s1 to symbol_names[1], etc.
 
-    Custom syntax: [symbol_names] -> (affine_expression)
-    Example: [WG0, BLOCK_M] -> (WG0 * BLOCK_M + 42)
+    Custom syntax: [symbol_names] -> (start_expr, step_expr, stride_expr)
+    Example: [WG0, BLOCK_M] -> (WG0 * BLOCK_M + 42, 1, BLOCK_M)
   }];
 
   let parameters = (ins
     "::mlir::ArrayAttr":$symbol_names,
-    "::mlir::AffineMapAttr":$affine_map
+    "::mlir::AffineMapAttr":$start,
+    "::mlir::AffineMapAttr":$step,
+    "::mlir::AffineMapAttr":$stride
   );
 
   let hasCustomAssemblyFormat = 1;
@@ -127,8 +129,10 @@ def WaveIndexMappingAttr : AttrDef<WaveDialect, "WaveIndexMapping"> {
       return result;
     }
 
-    /// Get the underlying affine map.
-    ::mlir::AffineMap getMap() { return getAffineMap().getValue(); }
+    /// Getters for the underlying affine maps.
+    ::mlir::AffineMap getStartMap() { return getStart().getValue(); }
+    ::mlir::AffineMap getStepMap() { return getStep().getValue(); }
+    ::mlir::AffineMap getStrideMap() { return getStride().getValue(); }
   }];
 }
 

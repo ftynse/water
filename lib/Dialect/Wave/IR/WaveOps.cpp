@@ -439,15 +439,38 @@ LogicalResult RegisterOp::verify() {
       }
 
       auto mappingAttr = cast<WaveIndexMappingAttr>(namedAttr.getValue());
-      AffineMap map = mappingAttr.getMap();
+      AffineMap startMap = mappingAttr.getStartMap();
+      AffineMap stepMap = mappingAttr.getStepMap();
+      AffineMap strideMap = mappingAttr.getStrideMap();
 
-      // Verify the affine map has no dimensions, only symbols
-      if (map.getNumDims() != 0) {
-        return emitOpError(
-                   "wave indexing affine maps should have no dimensions, only "
-                   "symbols, got ")
-               << map.getNumDims() << " dimensions for symbol "
-               << namedAttr.getName();
+      auto checkNoDims = [&](AffineMap map, StringRef which) -> LogicalResult {
+        if (map.getNumDims() != 0) {
+          return emitOpError(
+                     "wave indexing " + which +
+                     " map should have no dimensions, only symbols, got ")
+                 << map.getNumDims() << " dimensions for symbol "
+                 << namedAttr.getName();
+        }
+        return success();
+      };
+
+      if (failed(checkNoDims(startMap, "start")) ||
+          failed(checkNoDims(stepMap, "step")) ||
+          failed(checkNoDims(strideMap, "stride"))) {
+        return failure();
+      }
+
+      // Verify all three maps use the same global symbol set size as declared.
+      unsigned declared = mappingAttr.getSymbolNames().size();
+      if (startMap.getNumSymbols() != declared ||
+          stepMap.getNumSymbols() != declared ||
+          strideMap.getNumSymbols() != declared) {
+        return emitOpError("inconsistent symbol count between symbol_names and "
+                           "affine maps for index symbol '")
+               << namedAttr.getName() << "' (expected " << declared
+               << ", got start=" << startMap.getNumSymbols()
+               << ", step=" << stepMap.getNumSymbols()
+               << ", stride=" << strideMap.getNumSymbols() << ")";
       }
 
       // Check that the symbol name corresponds to a dimension in the register
