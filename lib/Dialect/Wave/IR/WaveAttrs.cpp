@@ -27,13 +27,13 @@ using namespace wave;
 
 Attribute WaveIndexMappingAttr::parse(AsmParser &parser, Type type) {
   // Parse custom syntax: '[' symbol-names ']' '->' '(' affine-expr ')'
-  // This preserves meaningful symbol names while leveraging MLIR's affine
-  // parser.
+  // This preserves meaningful symbol names while leveraging the existing
+  // affine parser.
 
   SmallVector<Attribute> symbolNameAttrs;
   SmallVector<StringRef> symbolNames;
 
-  // Parse '[' symbol-names ']'
+  // Parse '[' symbol-names ']' also allowing an empty list.
   if (parser.parseLSquare())
     return {};
 
@@ -46,8 +46,12 @@ Attribute WaveIndexMappingAttr::parse(AsmParser &parser, Type type) {
     return success();
   };
 
-  if (parser.parseCommaSeparatedList(parseSymbol) || parser.parseRSquare())
-    return {};
+  // If the list is empty, we should be able to immediately parse a ']'.
+  // Otherwise, parse a non-empty, comma-separated list followed by ']'.
+  if (failed(parser.parseOptionalRSquare())) {
+    if (parser.parseCommaSeparatedList(parseSymbol) || parser.parseRSquare())
+      return {};
+  }
 
   // Parse '->' '(' affine-expr ')'
   if (parser.parseArrow() || parser.parseLParen())
@@ -69,7 +73,8 @@ Attribute WaveIndexMappingAttr::parse(AsmParser &parser, Type type) {
     return {};
 
   // Build the final attribute
-  auto affineMap = AffineMap::get(0, symbolNames.size(), parsedExpr, context);
+  auto affineMap = AffineMap::get(
+      /*numDims=*/0, /*numSymbols=*/symbolNames.size(), parsedExpr, context);
   auto mapAttr = AffineMapAttr::get(affineMap);
   ArrayAttr symbolNamesAttr = parser.getBuilder().getArrayAttr(symbolNameAttrs);
 

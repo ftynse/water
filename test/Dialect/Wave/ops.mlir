@@ -118,3 +118,15 @@ func.func @register_complex_index() -> !wave.register<[@B, @N, @M] of f32> {
        : !wave.register<[@B, @N, @M] of f32>
   return %0 : !wave.register<[@B, @N, @M] of f32>
 }
+
+
+// CHECK-LABEL: @register_empty_symbol_list
+func.func @register_empty_symbol_list() -> !wave.register<[@B] of f32> {
+  // CHECK: wave.register
+  %0 = wave.register(0.0)
+       index {
+         B : [] -> (0)
+       }
+       : !wave.register<[@B] of f32>
+  return %0 : !wave.register<[@B] of f32>
+}
