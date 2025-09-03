@@ -10,6 +10,8 @@
 include "water/Dialect/Wave/IR/WaveDialect.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
+include "mlir/IR/BuiltinAttributeInterfaces.td"
+include "mlir/IR/CommonAttrConstraints.td"
 
 //-----------------------------------------------------------------------------
 // Address space enum and attribute
@@ -112,6 +114,182 @@ def WaveNormalFormAttr
 }
 
 //-----------------------------------------------------------------------------
+// Workgroup dim enum and attribute
+//-----------------------------------------------------------------------------
+
+def WaveWorkgroupDimEnum
+    : I32EnumAttr<"WaveWorkgroupDim", "Workgroup dimensions", [
+  I32EnumAttrCase<"X", 0, "x">,
+  I32EnumAttrCase<"Y", 1, "y">,
+  I32EnumAttrCase<"Z", 2, "z">,
+]> {
+  let cppNamespace = "::wave";
+  let genSpecializedAttr = 0;
+}
+
+def WaveWorkgroupDimAttr
+    : EnumAttr<WaveDialect, WaveWorkgroupDimEnum, "workgroup_dim"> {
+  let assemblyFormat = "`<` $value `>`";
+}
+
+//-----------------------------------------------------------------------------
+// Constraint attributes
+//-----------------------------------------------------------------------------
+
+def HardwareConstraintAttr : AttrDef<WaveDialect, "HardwareConstraint"> {
+  let mnemonic = "hardware_constraint";
+  let description = [{
+    A constraint of the form:
+    ```mlir
+    #wave.hardware_constraint<threads_per_wave = 64,
+                              waves_per_block = [1, 1, 1],
+                              mma_type = #wave.mma_kind<f32_16x16x16_f16>,
+                              vector_shapes = {M = 1, N = 1, K = 64},
+                              max_bits_per_load = 128>
+    ```
+
+    specifies that the hardware supports N `threads_per_wave`
+    and that we want all mma operations in the microkernel to be
+    mapped to a hardware mma instruction of shape (16x16x16).
+    This translates to a hardware specific index constraint.
+    `waves_per_block` is used to determine how many waves should make up
+    one workgroup.
+
+    Not all computation graphs have mma operators in them. In
+    these situations, the user can specify the vector shape they
+    want to tile to by specifying the `vector_shapes` dictionary
+    which maps a tensor dimension to its corresponding tile size.
+
+    Both mma constraints and vector shapes can be specified, but
+    the mapping from symbols to shapes should be injective.
+
+    `max_bits_per_load` specifies the maximum number of bits that can
+    be loaded with a single load instruction.
+  }];
+  let parameters = (ins "unsigned":$threads_per_wave,
+                        OptionalArrayRefParameter<"unsigned">:$waves_per_block,
+                        OptionalParameter<"::wave::WaveMmaKindAttr">:$mma_type,
+                        OptionalParameter<"::mlir::DictionaryAttr">:$vector_shapes,
+                        DefaultValuedParameter<"unsigned", "128">:$max_bits_per_load);
+
+  let assemblyFormat = [{
+    `<` `threads_per_wave` `=` $threads_per_wave
+    (`,` `waves_per_block` `=` `[` $waves_per_block^ `]`)?
+    (`,` `mma_type` `=` $mma_type^)?
+    (`,` `vector_shapes` `=` $vector_shapes^)?
+    (`,` `max_bits_per_load` `=` $max_bits_per_load^)? `>`
+  }];
+
+  let genVerifyDecl = 1;
+}
+
+def WorkgroupConstraintAttr : AttrDef<WaveDialect, "WorkgroupConstraint"> {
+  let mnemonic = "workgroup_constraint";
+  let description = [{
+    A constraint of the form:
+    ```mlir
+    #wave.workgroup_constraint<dim = <"M">,
+                               tile_size = [BLOCK_M] -> (BLOCK_M),
+                               workgroup_dim = <x>,
+                               primary = true>
+    ```
+
+    specifies that we want to distribute dimension M along workgroup dim `x`
+    with a tile size of BLOCK_M resulting in M // BLOCK_M workgroups along that
+    dimension.
+  }];
+  let parameters = (ins "::wave::WaveSymbolAttr":$dim,
+                        "::wave::WaveExpressionAttr":$tile_size,
+                        "::wave::WaveWorkgroupDimAttr":$workgroup_dim,
+                        DefaultValuedParameter<"bool", "true">:$primary);
+
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+def WaveConstraintAttr : AttrDef<WaveDialect, "WaveConstraint"> {
+  let mnemonic = "wave_constraint";
+  let description = [{
+    A constraint of the form:
+    ```mlir
+    #wave.wave_constraint<dim = <"K">,
+                          tile_size = [WAVE_K] -> (WAVE_K),
+                          wg_constraint = #wg_constraint>
+    ```
+
+    that we want distribute the K dimension among multiple waves with
+    each wave operating on a tile size of WAVE_K. The assumption is
+    that the K dimension has already been distributed among workgroups.
+    If the K dimension has been distributed among workgroups with a
+    tile size of BLOCK_K, then the number of waves along the K dimension
+    is given by BLOCK_K // WAVE_K.
+  }];
+  let parameters = (ins "::wave::WaveSymbolAttr":$dim,
+                        "::wave::WaveExpressionAttr":$tile_size,
+                        OptionalParameter<"::wave::WorkgroupConstraintAttr">:$wg_constraint);
+
+  let assemblyFormat = "`<` struct(params) `>`";
+  let genVerifyDecl = 1;
+}
+
+def TilingConstraintAttr : AttrDef<WaveDialect, "TilingConstraint"> {
+  let mnemonic = "tiling_constraint";
+  let description = [{
+    A constraint of the form:
+    ```mlir
+    #wave.tiling_constraint<dim = <"K">,
+                            tile_size = [TILE_K] -> (TILE_K)>
+    ```
+
+    specifies that we want to distribute the K dimension among multiple threads. With
+    each thread operating on a tile size of TILE_K.
+  }];
+  let parameters = (ins "::wave::WaveSymbolAttr":$dim,
+                        "::wave::WaveExpressionAttr":$tile_size);
+
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+def DeviceConstraintAttr : AttrDef<WaveDialect, "DeviceConstraint"> {
+  let mnemonic = "device_constraint";
+  let description = [{
+    A constraint of the form:
+    ```mlir
+    #wave.device_constraint<dim = <"M">, tile_size = [DEVICE_M] -> (DEVICE_M), device_dim = 0>
+    ```
+
+    specifies that we want to distribute dimension `M` along the device with a tile size of `DEVICE_M`.
+    This translates to an index constraint for all tensors of the shape [M, ?] ->
+    index += (device_id * DEVICE_M, 0), where device_id is the id
+    of the device on which the tensor is located.
+
+    Device id is a tuple of (dev_id_x, devid_y, dev_id_z) where
+    dev_id_x is the id of the device in the x dimension, dev_id_y is
+    the id of the device in the y dimension and dev_id_z is the id of the
+    device in the z dimension. The device id is used to compute the index
+    offset for the tensor along the specified dimension.
+
+    Device constraints can be applied for multiple dimensions. For example:
+
+    ```mlir
+    wave.constraints = [
+      #wave.device_constraint<dim = <"M">, tile_size = [DEVICE_M] -> (DEVICE_M), device_dim = 0>
+      #wave.device_constraint<dim = <"N">, tile_size = [DEVICE_N] -> (DEVICE_N), device_dim = 1>
+    ]
+    ```
+
+    specifies that we want to distribute `DEVICE_M` x `DEVICE_N` tiles of the tensor
+    across the devices, where `DEVICE_M` and `DEVICE_N` are the tile sizes for
+    dimensions `M` and `N` respectively.
+  }];
+  let parameters = (ins "::wave::WaveSymbolAttr":$dim,
+                        "::wave::WaveExpressionAttr":$tile_size,
+                        "unsigned":$device_dim);
+
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+
+//-----------------------------------------------------------------------------
 // Other attributes
 //-----------------------------------------------------------------------------
 
@@ -132,6 +310,37 @@ def WaveSymbolAttr : AttrDef<WaveDialect, "WaveSymbol"> {
     void printAsSymbolRef(::llvm::raw_ostream &os) const {
       os << "@" << getName();
     }
+  }];
+}
+
+def WaveExpressionAttr : AttrDef<WaveDialect, "WaveExpression"> {
+  // TOOD: reuse some code between this and WaveIndexMappingAttr
+  let mnemonic = "wave_expr";
+  let description = [{
+    Base symbolic expression used in the Wave dialect.
+  }];
+
+  let parameters = (ins ArrayRefParameter<"WaveSymbolAttr">:$symbol_names,
+                    "::mlir::AffineMap":$map);
+
+  let hasCustomAssemblyFormat = 1;
+
+  let extraClassDeclaration = [{
+    /// Get the symbol name at the given index.
+    ::llvm::StringRef getSymbolName(unsigned index) const {
+      auto names = getSymbolNames();
+      if (index >= names.size()) return ::llvm::StringRef();
+        return names[index].getName();
+    }
+
+    /// Get all symbol names as a vector of string references.
+    ::llvm::SmallVector<::llvm::StringRef> getAllSymbolNames() const {
+      auto names = getSymbolNames();
+      return ::llvm::map_to_vector(names, [](::wave::WaveSymbolAttr attr) {
+        return attr.getName();
+      });
+    }
+
   }];
 }
 
