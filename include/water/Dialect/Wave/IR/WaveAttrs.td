@@ -10,6 +10,8 @@
 include "water/Dialect/Wave/IR/WaveDialect.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
+include "mlir/IR/BuiltinAttributeInterfaces.td"
+include "mlir/IR/CommonAttrConstraints.td"
 
 //-----------------------------------------------------------------------------
 // Address space enum and attribute
@@ -69,6 +71,159 @@ def WaveMmaKindEnum
 def WaveMmaKindAttr : EnumAttr<WaveDialect, WaveMmaKindEnum, "mma_kind"> {
   let assemblyFormat = "`<` $value `>`";
 }
+
+//-----------------------------------------------------------------------------
+// Constraint attributes
+//-----------------------------------------------------------------------------
+
+def WaveHardwareConstraintAttr : AttrDef<WaveDialect, "WaveHardwareConstraint"> {
+  let mnemonic = "hardware_constraint";
+  let description = [{
+    A constraint of the form
+        tkw.HardwareConstraint(threads_per_wave = N,
+                               mma_type = 'MFMA_F32_16x16x16_F16')
+    specifies that the hardware supports N threads per wave and that
+    we want all mma operations in the microkernel to be
+    mapped to a hardware mma instruction of shape (16x16x16).
+    This translates to a hardware specific index constraint.
+
+    Not all computation graphs have mma operators in them. In
+    these situations, the user can specify the vector shape they
+    want to tile to by specifying the vector shapes dictionary
+    which maps a tensor dimension to its corresponding tile size.
+
+    Both mma constraints and vector shapes can be specified, but
+    the mapping from symbols to shapes should be injective.
+  }];
+  let parameters = (ins "unsigned":$threads_per_wave,
+                        ArrayRefParameter<"unsigned">:$waves_per_block,
+                        OptionalParameter<"WaveMmaKindEnum">:$mma_type,
+                        OptionalParameter<"DictionaryAttr">:$vector_shapes,
+                        DefaultValuedParameter<"unsigned", "128">:$max_bits_per_load);
+  let assemblyFormat = "`<` $threads_per_wave `,` $vector_shapes `,` $waves_per_block `,` $max_bits_per_load `>`";
+}
+
+def WaveWorkgroupConstraintAttr : AttrDef<WaveDialect, "WaveWorkgroupConstraint"> {
+  let mnemonic = "workgroup_constraint";
+  let description = [{
+    A constraint of the form `tkw.WorkgroupConstraint(M, BLOCK_M, 0)`
+    specifies that we want to distribute dimension M along workgroup dim 0
+    with a tile size of BLOCK_M resulting in M // BLOCK_M workgroups along that
+    dimension. This translates to an index constraint for all tensors of the
+    shape [M, ?] -> index += (workgroup_id_0 * BLOCK_M, 0)
+  }];
+  let parameters = (ins "AffineExpr":$dim,
+                        "AffineExpr":$tile_size,
+                        "unsigned":$workgroup_dim,
+                        DefaultValuedParameter<"bool", "true">:$primary,
+                        OptionalParameter<"AffineExpr">:$iters,
+                        OptionalParameter<"AffineExpr">:$per_device_dim);
+  let assemblyFormat = "`<` $dim `,` $tile_size `,` $workgroup_dim `,` $primary `,` $iters `,` $per_device_dim `>`";
+}
+
+def WaveTilingConstraintAttr : AttrDef<WaveDialect, "WaveTilingConstraint"> {
+  let mnemonic = "tiling_constraint";
+  let description = [{
+    A constraint of the form `tkw.TilingConstraint(K, BLOCK_K)` specifies
+    that we want to tile the K dimension with a tile size of BLOCK_K. This
+    adds an index constraint to the K-th dimension of a tensor of the form
+    BLOCK_K * i, where i is the induction variable associated with the
+    loop around dimension K.
+  }];
+  let parameters = (ins "AffineExpr":$dim,
+                        OptionalParameter<"AffineExpr">:$tile_size,
+                        OptionalParameter<"AffineExpr">:$induction_var,
+                        OptionalParameter<"AffineExpr">:$iters,
+                        DefaultValuedParameter<"AffineExpr", "0">:$start);
+  let assemblyFormat = "`<` $dim `,` $tile_size `,` $induction_var `,` $iters `,` $start `>`";
+}
+
+def WaveWaveConstraintAttr : AttrDef<WaveDialect, "WaveWaveConstraint"> {
+  let mnemonic = "wave_constraint";
+  let description = [{
+    A constraint of the form `tkw.WaveConstraint(K, WAVE_K)` specifies
+    that we want distribute the K dimension among multiple waves which
+    each wave operating on a tile size of WAVE_K. The assumption is
+    that the K dimension has already been distributed among workgroups.
+    If the K dimension has been distributed among workgroups with a
+    tile size of BLOCK_K, then the number of waves along the K dimension
+    is given by BLOCK_K // WAVE_K.
+
+    This constraint adds an index constraint to the K-th dimension of a
+    a tensor of the form WAVE_K * wave_id. The index of the wave
+    is determined by the following mapping:
+    workgroup id 0 -> wave/thread id x
+    workgroup id 1 -> wave/thread id y
+    workgroup id 2 -> wave/thread id z
+    (If the tensor dimension has been distributed along workgroup dimension
+    {0, 1, 2}, then the corresponding thread id is {x, y, z}).
+
+    Because we represent the number of threads per block as
+    [wave_id_0 * threads_per_wave, wave_id_1, wave_id_2], special care is
+    required when computing wave_id_0. Specifically,
+    wave_id_0 = floor(thread_id_0 / threads_per_wave)
+    wave_id_1 = thread_id_1
+    wave_id_2 = thread_id_2
+  }];
+  let parameters = (ins "AffineExpr":$dim,
+                        "AffineExpr":$tile_size,
+                        OptionalParameter<"AffineExpr">:$wave_id,
+                        OptionalParameter<"WaveWorkgroupConstraintAttr">:$wg_constraint);
+  let assemblyFormat = "`<` $dim `,` $tile_size (`,` $wave_id^)? (`,` $wg_constraint^)? `>`";
+}
+
+def WaveReorderingConstraintAttr : AttrDef<WaveDialect, "WaveReorderingConstraint"> {
+  let mnemonic = "reordering_constraint";
+  let description = [{
+    A constraint of the form `tkw.ReorderingConstraint(new_wg0, 0)`
+    specifies how workgroups are mapped to data along workgroup dim 0,
+    according to the 'new_wg0' expression.
+    The internal indexing of waves and threads within the workgroup do not change.
+    The assumption is that each workgroup dimension has already been distributed by each WorkgroupConstraint,
+    and since a ReorderingConstraint only shifts the positioning of workgroups after this,
+    this class does not extend DistributionConstraint.
+  }];
+  let parameters = (ins "AffineExpr":$reordered_equation,
+                        "unsigned":$workgroup_dim);
+  let assemblyFormat = "`<` $reordered_equation `,` $workgroup_dim `>`";
+}
+
+def WaveIteratorBindingAttr : AttrDef<WaveDialect, "WaveIteratorBinding"> {
+  let mnemonic = "iterator_binding";
+  let summary = [{TODO}];
+  let description = [{TODO}];
+  let parameters = (ins OptionalParameter<"DictionaryAttr">:$binding);
+  let assemblyFormat = "`<` $binding `>`";
+}
+
+def WaveDeviceConstraintAttr : AttrDef<WaveDialect, "WaveDeviceConstraint"> {
+  let mnemonic = "device_constraint";
+  let description = [{
+    A constraint of the form `tkw.DeviceConstraint(M, DEVICE_M, <device dimension>)` specifies
+    that we want to distribute dimension M along the device with a tile size of DEVICE_M.
+    This translates to an index constraint for all tensors of the shape [M, ?] ->
+    index += (device_id * DEVICE_M, 0), where device_id is the id
+    of the device on which the tensor is located.
+
+    Device id is a tuple of (dev_id_x, devid_y, dev_id_z) where
+    dev_id_x is the id of the device in the x dimension, dev_id_y is
+    the id of the device in the y dimension and dev_id_z is the id of the
+    device in the z dimension. The device id is used to compute the index
+    offset for the tensor along the specified dimension.
+
+    Device constraints can be applied for multiple dimensions. For example,
+    constraint += [tkw.DeviceConstraint(M, DEVICE_M, 0)]
+    constraint += [tkw.DeviceConstraint(N, DEVICE_N, 1)]
+    specifies that we want to distribute DEVICE_M x DEVICE_N tiles of the tensor
+    across the devices, where DEVICE_M and DEVICE_N are the tile sizes for
+    dimensions M and N respectively.
+  }];
+  let parameters = (ins "AffineExpr":$dim,
+                        "AffineExpr":$tile_size,
+                        "unsigned":$device_dim);
+  let assemblyFormat = "`<` $dim `,` $tile_size `,` $device_dim `>`";
+}
+
 
 //-----------------------------------------------------------------------------
 // Other attributes
