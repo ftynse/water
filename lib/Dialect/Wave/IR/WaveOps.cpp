@@ -292,7 +292,11 @@ static mlir::LogicalResult checkMmaTypeCompatibility(mlir::Location loc,
   case wave::WaveMmaKind::F32_16x16x16_F16:
   case wave::WaveMmaKind::F32_32x32x8_F16:
   case wave::WaveMmaKind::F32_16x16x32_K8_F16:
-  case wave::WaveMmaKind::F32_32x32x16_K8_F16: {
+  case wave::WaveMmaKind::F32_32x32x16_F16:
+  case wave::WaveMmaKind::F32_16x16x32_F16:
+  case wave::WaveMmaKind::F32_32x32x16_K8_F16:
+  case wave::WaveMmaKind::F32_32x32x16_BF16:
+  case wave::WaveMmaKind::F32_16x16x32_BF16: {
     success = mlir::succeeded(checkAllowedTypes<mlir::Float32Type>(
                   loc, accType, "accumulator/result", kind)) &&
               mlir::succeeded(
