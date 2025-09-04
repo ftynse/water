@@ -114,7 +114,7 @@ def WaveIndexMappingAttr : AttrDef<WaveDialect, "WaveIndexMapping"> {
 
   let extraClassDeclaration = [{
     /// Get the symbol name at the given index.
-    ::llvm::StringRef getSymbolName(unsigned index) {
+    ::llvm::StringRef getSymbolName(unsigned index) const {
       auto names = getSymbolNames().getValue();
       if (index >= names.size()) return ::llvm::StringRef();
       return ::mlir::cast<::mlir::StringAttr>(names[index]).getValue();
