@@ -117,7 +117,7 @@ def WaveIndexMappingAttr : AttrDef<WaveDialect, "WaveIndexMapping"> {
     ::llvm::StringRef getSymbolName(unsigned index) const {
       auto names = getSymbolNames().getValue();
       if (index >= names.size()) return ::llvm::StringRef();
-      return ::mlir::cast<::mlir::StringAttr>(names[index]).getValue();
+      return ::llvm::cast<::mlir::StringAttr>(names[index]).getValue();
     }
 
     /// Get all symbol names as a vector of string references.
