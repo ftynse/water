@@ -104,35 +104,33 @@ def WaveIndexMappingAttr : AttrDef<WaveDialect, "WaveIndexMapping"> {
   }];
 
   let parameters = (ins
-    "::mlir::ArrayAttr":$symbol_names,
-    "::mlir::AffineMapAttr":$start,
-    "::mlir::AffineMapAttr":$step,
-    "::mlir::AffineMapAttr":$stride
+    ArrayRefParameter<WaveSymbolAttr>:$symbol_names,
+    "::mlir::AffineMap":$start,
+    "::mlir::AffineMap":$step,
+    "::mlir::AffineMap":$stride
   );
 
   let hasCustomAssemblyFormat = 1;
 
   let extraClassDeclaration = [{
     /// Get the symbol name at the given index.
-    ::llvm::StringRef getSymbolName(unsigned index) const {
-      auto names = getSymbolNames().getValue();
+    ::llvm::StringRef getSymbolName(unsigned index) {
+      auto names = getSymbolNames();
       if (index >= names.size()) return ::llvm::StringRef();
-      return ::llvm::cast<::mlir::StringAttr>(names[index]).getValue();
+      return names[index].getName();
     }
 
     /// Get all symbol names as a vector of string references.
     ::llvm::SmallVector<::llvm::StringRef> getAllSymbolNames() const {
       ::llvm::SmallVector<::llvm::StringRef> result;
-      for (auto attr : getSymbolNames().getValue()) {
-        result.push_back(::mlir::cast<::mlir::StringAttr>(attr).getValue());
+      auto names = getSymbolNames();
+      result.reserve(names.size());
+      for (auto symbolAttr : names) {
+        result.push_back(symbolAttr.getName());
       }
       return result;
     }
 
-    /// Getters for the underlying affine maps.
-    ::mlir::AffineMap getStartMap() { return getStart().getValue(); }
-    ::mlir::AffineMap getStepMap() { return getStep().getValue(); }
-    ::mlir::AffineMap getStrideMap() { return getStride().getValue(); }
   }];
 }
 

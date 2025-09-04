@@ -1,4 +1,10 @@
 build/
+build-component/
+build-component2/
+install-component/
+install-component2/
+build-static/
+install-static/
 llvm-project/
 .cache/
 .venv/

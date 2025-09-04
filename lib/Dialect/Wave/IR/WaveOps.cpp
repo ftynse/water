@@ -438,11 +438,6 @@ LogicalResult RegisterOp::verify() {
                << namedAttr.getValue();
       }
 
-      auto mappingAttr = cast<WaveIndexMappingAttr>(namedAttr.getValue());
-      AffineMap startMap = mappingAttr.getStartMap();
-      AffineMap stepMap = mappingAttr.getStepMap();
-      AffineMap strideMap = mappingAttr.getStrideMap();
-
       auto checkNoDims = [&](AffineMap map, StringRef which) -> LogicalResult {
         if (map.getNumDims() != 0) {
           return emitOpError(
@@ -454,9 +449,10 @@ LogicalResult RegisterOp::verify() {
         return success();
       };
 
-      if (failed(checkNoDims(startMap, "start")) ||
-          failed(checkNoDims(stepMap, "step")) ||
-          failed(checkNoDims(strideMap, "stride"))) {
+      auto mappingAttr = cast<WaveIndexMappingAttr>(namedAttr.getValue());
+      if (failed(checkNoDims(mappingAttr.getStart(), "start")) ||
+          failed(checkNoDims(mappingAttr.getStep(), "step")) ||
+          failed(checkNoDims(mappingAttr.getStride(), "stride"))) {
         return failure();
       }
 

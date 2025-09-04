@@ -30,7 +30,7 @@ Attribute WaveIndexMappingAttr::parse(AsmParser &parser, Type type) {
   // This preserves meaningful symbol names while leveraging the existing
   // affine parser.
 
-  SmallVector<Attribute> symbolNameAttrs;
+  SmallVector<WaveSymbolAttr> symbolNameAttrs;
   SmallVector<StringRef> symbolNames;
 
   // Parse '[' symbol-names ']' also allowing an empty list.
@@ -41,7 +41,8 @@ Attribute WaveIndexMappingAttr::parse(AsmParser &parser, Type type) {
     StringRef symbolName;
     if (failed(parser.parseKeyword(&symbolName)))
       return failure();
-    symbolNameAttrs.push_back(parser.getBuilder().getStringAttr(symbolName));
+    symbolNameAttrs.push_back(
+        WaveSymbolAttr::get(parser.getContext(), symbolName));
     symbolNames.push_back(symbolName);
     return success();
   };
@@ -93,9 +94,8 @@ Attribute WaveIndexMappingAttr::parse(AsmParser &parser, Type type) {
   auto strideMap = AffineMap::get(
       /*numDims=*/0, /*numSymbols=*/symbolNames.size(), strideExpr, context);
 
-  ArrayAttr symbolNamesAttr = parser.getBuilder().getArrayAttr(symbolNameAttrs);
-  return get(parser.getContext(), symbolNamesAttr, AffineMapAttr::get(startMap),
-             AffineMapAttr::get(stepMap), AffineMapAttr::get(strideMap));
+  return get(parser.getContext(), symbolNameAttrs, startMap, stepMap,
+             strideMap);
 }
 
 void WaveIndexMappingAttr::print(AsmPrinter &printer) const {
@@ -104,8 +104,8 @@ void WaveIndexMappingAttr::print(AsmPrinter &printer) const {
   // Each expression is an affine map with the same numSymbols; we substitute
   // s0, s1, ... using the shared names when rendering each expression.
   printer << "[";
-  llvm::interleaveComma(getSymbolNames().getAsRange<StringAttr>(), printer,
-                        [&](StringAttr s) { printer << s.getValue(); });
+  llvm::interleaveComma(getSymbolNames(), printer,
+                        [&](WaveSymbolAttr s) { printer << s.getName(); });
   printer << "] -> ";
 
   // Helper: render an affine map result to a string, then textual-substitute
@@ -140,9 +140,9 @@ void WaveIndexMappingAttr::print(AsmPrinter &printer) const {
 
   auto allNames = getAllSymbolNames();
   // All three maps share the same symbol set and order.
-  auto startStr = stringifyWithNames(getStart().getValue(), allNames);
-  auto stepStr = stringifyWithNames(getStep().getValue(), allNames);
-  auto strideStr = stringifyWithNames(getStride().getValue(), allNames);
+  auto startStr = stringifyWithNames(getStart(), allNames);
+  auto stepStr = stringifyWithNames(getStep(), allNames);
+  auto strideStr = stringifyWithNames(getStride(), allNames);
 
   printer << "(" << startStr << ", " << stepStr << ", " << strideStr << ")";
 }
