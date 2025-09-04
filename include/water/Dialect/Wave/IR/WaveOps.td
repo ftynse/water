@@ -6,8 +6,8 @@
 
 include "water/Dialect/Wave/IR/WaveAttrs.td"
 include "water/Dialect/Wave/IR/WaveDialect.td"
+include "water/Dialect/Wave/IR/WaveInterfaces.td"
 include "water/Dialect/Wave/IR/WaveTypes.td"
-include "water/Dialect/Wave/IR/WaveAttrs.td"
 include "mlir/IR/OpBase.td"
 include "water/Dialect/Wave/IR/WaveInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
@@ -16,6 +16,20 @@ include "mlir/IR/BuiltinAttributeInterfaces.td"
 
 #ifndef WATER_DIALECT_WAVE_WAVEOPS
 #define WATER_DIALECT_WAVE_WAVEOPS
+
+//-----------------------------------------------------------------------------
+// Base class for all Wave operations.
+//-----------------------------------------------------------------------------
+
+// Wave operations must have an optional attribute for index sequences.
+class WaveOp<string mnemonic, list<Trait> traits = []>
+    : Op<WaveDialect, mnemonic, !listconcat(traits, [HasWaveIndexMapping])> {
+  dag commonArguments = (ins
+    Arg<OptionalAttr<DictionaryAttr>, "Index expression">:$index
+  );
+
+  string commonArgumentsSyntax = "( `index` custom<WaveIndexDict>($index)^ )?";
+}
 
 //-----------------------------------------------------------------------------
 // Base classes for arithmetic operations
@@ -32,11 +46,11 @@ class WaveArithmeticOpDoc {
 }
 
 class UnaryWaveOp<string mnemonic>
-    : Op<WaveDialect, mnemonic>,
+    : WaveOp<mnemonic>,
       WaveArithmeticOpDoc {
-  let arguments = (ins
+  let arguments = !con((ins
     Arg<WaveTensorInRegister, "Argument">:$argument
-  );
+  ), commonArguments);
 
   let results = (outs
     Arg<WaveTensorInRegister, "Result">:$result
@@ -47,19 +61,20 @@ class UnaryWaveOp<string mnemonic>
 }
 
 class BinaryWaveOp<string mnemonic>
-    : Op<WaveDialect, mnemonic>,
+    : WaveOp<mnemonic>,
       WaveArithmeticOpDoc {
-  let arguments = (ins
+  let arguments = !con((ins
     Arg<WaveTensorInRegister, "Left-hand side">:$lhs,
     Arg<WaveTensorInRegister, "Right-hand side">:$rhs
-  );
+  ), commonArguments);
 
   let results = (outs
     Res<WaveTensorInRegister, "Result of the operation">:$result
   );
 
   let assemblyFormat =
-    "$lhs `,` $rhs attr-dict `:` functional-type(operands, results)";
+    "$lhs `,` $rhs " # commonArgumentsSyntax # "attr-dict `:`"
+    "functional-type(operands, results)";
 }
 
 //-----------------------------------------------------------------------------
@@ -87,7 +102,7 @@ def Exp2Op : UnaryWaveOp<"exp2"> {
 }
 
 def MmaOp
-    : Op<WaveDialect, "mma">,
+    : WaveOp<"mma">,
       WaveArithmeticOpDoc {
   let summary = "Matrix multiply and accumulate";
   let description = baseDescription # [{
@@ -99,19 +114,20 @@ def MmaOp
     type.
   }];
 
-  let arguments = (ins
+  let arguments = !con((ins
     Arg<WaveTensorInRegister, "Left-hand side of the multiplication">:$lhs,
     Arg<WaveTensorInRegister, "Right-hand side of the multiplication">:$rhs,
     Arg<WaveTensorInRegister, "Accumulator for addition">:$accumulator,
     Arg<WaveMmaKindAttr, "Kind of the MMA intrinsic to target">:$kind
-  );
+  ), commonArguments);
 
   let results = (outs
     Res<WaveTensorInRegister, "Accumulated result">:$result
   );
 
-  let assemblyFormat = "$lhs `,` $rhs `,` $accumulator attr-dict `:`"
-                       "functional-type(operands, results)";
+  let assemblyFormat =
+    "$lhs `,` $rhs `,` $accumulator " # commonArgumentsSyntax # "attr-dict `:`"
+    "functional-type(operands, results)";
   let hasVerifier = 1;
 }
 
@@ -169,26 +185,26 @@ def YieldOp : Op<WaveDialect, "yield",
 // Memory-related operations
 //-----------------------------------------------------------------------------
 
-def ReadOp : Op<WaveDialect, "read"> {
+def ReadOp : WaveOp<"read"> {
   let summary = "Reads from memory";
   let description = [{
     Moves data from a memory-resident tensor to a register-resident tensor
     preserving the shape.
   }];
 
-  let arguments = (ins
+  let arguments = !con((ins
     Arg<WaveTensorInMemory, "Tensor representing memory to read from">:$memory
-  );
+  ), commonArguments);
 
   let results = (outs
     Res<WaveTensorInRegister, "Read value">:$result
   );
 
-  let assemblyFormat =
-    "$memory attr-dict `:` functional-type(operands, results)";
+  let assemblyFormat = "$memory " # commonArgumentsSyntax # "attr-dict `:` "
+                       "functional-type(operands, results)";
 }
 
-def RegisterOp : Op<WaveDialect, "register"> {
+def RegisterOp : WaveOp<"register"> {
   let summary = "Defines a tensor value known to be placed in a register";
   let description = [{
     Defines a new register-resident tensor initialized with the given scalar
@@ -196,35 +212,36 @@ def RegisterOp : Op<WaveDialect, "register"> {
     type.
   }];
 
-  let arguments = (ins
+  let arguments = !con((ins
     Arg<Type<Or<[AnyInteger.predicate, AnyFloat.predicate]>>,
-        "Scalar value to initialize the tensor elements">:$init, OptionalAttr<DictionaryAttr>:$index
-  );
+        "Scalar value to initialize the tensor elements">:$init
+  ), commonArguments);
 
   let results = (outs
     Res<WaveTensorInRegister, "Defined value">:$result
   );
 
   let assemblyFormat =
-    "$init ( `index` custom<WaveIndexDict>($index)^ )? attr-dict `:`"
+    "$init " # commonArgumentsSyntax # " attr-dict `:`"
     " custom<RegisterOpTypes>(type($init), type($result))";
   let hasVerifier = 1;
 }
 
-def WriteOp : Op<WaveDialect, "write"> {
+def WriteOp : WaveOp<"write"> {
   let summary = "Writes into memory";
   let description = [{
     Moves data from a register-resident tensor into a memory-resident tensor
     preserving the shape.
   }];
 
-  let arguments = (ins
+  let arguments = !con((ins
     Arg<WaveTensorInRegister, "Value to write">:$value_to_store,
     Arg<WaveTensorInMemory, "Tensor representing memory to write into">:$memory
-  );
+  ), commonArguments);
 
-  let assemblyFormat = "$value_to_store `,` $memory attr-dict `:`"
-                       "type($value_to_store) `,` type($memory)";
+  let assemblyFormat =
+    "$value_to_store `,` $memory " # commonArgumentsSyntax # "attr-dict `:`"
+    "type($value_to_store) `,` type($memory)";
 }
 
 

@@ -9,6 +9,8 @@
 
 include "mlir/IR/OpBase.td"
 
-def HasWaveIndexMapping : NativeOpTrait<"HasWaveIndexMapping">;
+def HasWaveIndexMapping : NativeOpTrait<"HasWaveIndexMapping"> {
+  let cppNamespace = "::wave";
+}
 
 #endif // WATER_DIALECT_WAVE_WAVEINTERFACES
