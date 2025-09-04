@@ -33,10 +33,6 @@ Attribute WaveIndexMappingAttr::parse(AsmParser &parser, Type type) {
   SmallVector<WaveSymbolAttr> symbolNameAttrs;
   SmallVector<StringRef> symbolNames;
 
-  // Parse '[' symbol-names ']' also allowing an empty list.
-  if (parser.parseLSquare())
-    return {};
-
   auto parseSymbol = [&]() -> ParseResult {
     StringRef symbolName;
     if (failed(parser.parseKeyword(&symbolName)))
@@ -47,12 +43,9 @@ Attribute WaveIndexMappingAttr::parse(AsmParser &parser, Type type) {
     return success();
   };
 
-  // If the list is empty, we should be able to immediately parse a ']'.
-  // Otherwise, parse a non-empty, comma-separated list followed by ']'.
-  if (failed(parser.parseOptionalRSquare())) {
-    if (parser.parseCommaSeparatedList(parseSymbol) || parser.parseRSquare())
-      return {};
-  }
+  // Parse '[' symbol-names ']' allowing empty or non-empty lists.
+  if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, parseSymbol))
+    return {};
 
   // Parse affine expr triple: '->' '(' start_expr ',' step_expr ',' stride_expr
   // ')'
@@ -72,19 +65,17 @@ Attribute WaveIndexMappingAttr::parse(AsmParser &parser, Type type) {
   AffineExpr startExpr;
   AffineExpr stepExpr;
   AffineExpr strideExpr;
-  if (failed(parseExprWithNames(symbolNames, startExpr)))
+  if (failed(parseExprWithNames(symbolNames, startExpr)) ||
+      parser.parseComma() ||
+      failed(parseExprWithNames(symbolNames, stepExpr)) ||
+      parser.parseComma() ||
+      failed(parseExprWithNames(symbolNames, strideExpr)) ||
+      parser.parseRParen()) {
+    parser.emitError(
+        parser.getCurrentLocation(),
+        "expected three affine expressions for '(start, step, stride)'");
     return {};
-  if (parser.parseComma())
-    return {};
-  if (failed(parseExprWithNames(symbolNames, stepExpr)))
-    return {};
-  if (parser.parseComma())
-    return {};
-  if (failed(parseExprWithNames(symbolNames, strideExpr)))
-    return {};
-
-  if (parser.parseRParen())
-    return {};
+  }
 
   // Build maps
   auto startMap = AffineMap::get(
@@ -138,11 +129,11 @@ void WaveIndexMappingAttr::print(AsmPrinter &printer) const {
     return exprStr;
   };
 
-  auto allNames = getAllSymbolNames();
+  SmallVector<StringRef> allNames = getAllSymbolNames();
   // All three maps share the same symbol set and order.
-  auto startStr = stringifyWithNames(getStart(), allNames);
-  auto stepStr = stringifyWithNames(getStep(), allNames);
-  auto strideStr = stringifyWithNames(getStride(), allNames);
+  std::string startStr = stringifyWithNames(getStart(), allNames);
+  std::string stepStr = stringifyWithNames(getStep(), allNames);
+  std::string strideStr = stringifyWithNames(getStride(), allNames);
 
   printer << "(" << startStr << ", " << stepStr << ", " << strideStr << ")";
 }

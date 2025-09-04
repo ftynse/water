@@ -104,7 +104,7 @@ def WaveIndexMappingAttr : AttrDef<WaveDialect, "WaveIndexMapping"> {
   }];
 
   let parameters = (ins
-    ArrayRefParameter<WaveSymbolAttr>:$symbol_names,
+    ArrayRefParameter<"WaveSymbolAttr">:$symbol_names,
     "::mlir::AffineMap":$start,
     "::mlir::AffineMap":$step,
     "::mlir::AffineMap":$stride

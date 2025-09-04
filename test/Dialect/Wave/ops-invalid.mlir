@@ -83,49 +83,28 @@ func.func @iterate_mismatching_results(%arg0: !wave.tensor<[@A] of f32>, %arg1: 
 
 // -----
 
-func.func @register_invalid_value_type() {
-  // expected-error @below {{value attribute (unit) is not compatible with register element type ('f32')}}
-  %0 = wave.register(unit) : !wave.register<[@M, @N] of f32>
+// must provide the full triple (start, step, stride)
+func.func @index_attr_missing_step_stride(%arg0: f32) {
+  // expected-error @+2 {{expected ','}}
+  // expected-error @+1 {{custom op 'wave.register' expected three affine expressions for '(start, step, stride)'}}
+  wave.register %arg0 index {X : [WG0] -> (WG0)} : !wave.tensor<[@M] of f32, <register>>
   return
 }
 
 // -----
 
-func.func @register_invalid_array_value() {
-  // expected-error @below {{value attribute ([1, 2, 3]) is not compatible with register element type ('i32')}}
-  %0 = wave.register([1, 2, 3]) : !wave.register<[@M, @N] of i32>
+// must provide the full triple (start, step, stride)
+func.func @index_attr_missing_stride(%arg0: f32) {
+  // expected-error @+2 {{expected ','}}
+  // expected-error @+1 {{custom op 'wave.register' expected three affine expressions for '(start, step, stride)'}}
+  wave.register %arg0 index {X : [WG0] -> (WG0, 1)} : !wave.tensor<[@M] of f32, <register>>
   return
 }
 
 // -----
 
-func.func @register_invalid_index_symbol() -> !wave.register<[@M, @N] of f32> {
-  // expected-error @+1 {{index symbol 'X' does not correspond to any dimension in register type}}
-  %0 = wave.register(0.0) index {X : [WG0, BLOCK_M] -> (WG0 * BLOCK_M, 1, 1)} : !wave.register<[@M, @N] of f32>
-  return %0 : !wave.register<[@M, @N] of f32>
-}
-
-// -----
-
-func.func @register_case_sensitive_symbol() -> !wave.register<[@M, @N] of f32> {
-  // expected-error @+1 {{index symbol 'm' does not correspond to any dimension in register type}}
-  %0 = wave.register(0.0) index {m : [WG0, BLOCK_M] -> (WG0 * BLOCK_M, 1, 1)} : !wave.register<[@M, @N] of f32>
-  return %0 : !wave.register<[@M, @N] of f32>
-}
-
-// -----
-
-// Parsing must provide the full triple (start, step, stride)
-func.func @register_missing_step_stride() -> !wave.register<[@M] of f32> {
-  // expected-error @+1 {{expected ','}}
-  %0 = wave.register(0.0) index {X : [WG0] -> (WG0)} : !wave.register<[@M] of f32>
-  return %0 : !wave.register<[@M] of f32>
-}
-
-// -----
-
-func.func @register_missing_stride() -> !wave.register<[@M] of f32> {
-  // expected-error @+1 {{expected ','}}
-  %0 = wave.register(0.0) index {X : [WG0] -> (WG0, 1)} : !wave.register<[@M] of f32>
-  return %0 : !wave.register<[@M] of f32>
+func.func @index_attr_not_dict(%arg0: f32) {
+  // expected-error @+1 {{'wave.register' op attribute 'index' failed to satisfy constraint: dictionary of named attribute values}}
+  "wave.register"(%arg0) { index = 42 } : (f32) -> !wave.tensor<[@M] of f32, <register>>
+  return
 }
