@@ -55,7 +55,12 @@ def WaveMmaKindEnum
 
   // Configurations introduced in CDNA4.
   I32EnumAttrCase<"F32_16x16x128_F8F6F4", 0x1340, "f32_16x16x128_f8f6f4">,
-  I32EnumAttrCase<"F32_32x32x64_F8F6F4", 0x1341, "f32_32x32x64_f8f6f4">
+  I32EnumAttrCase<"F32_32x32x64_F8F6F4", 0x1341, "f32_32x32x64_f8f6f4">,
+  I32EnumAttrCase<"F32_32x32x16_BF16", 0x1320, "f32_32x32x16_bf16">,
+  I32EnumAttrCase<"F32_16x16x32_BF16", 0x1321, "f32_16x16x32_bf16">,
+  I32EnumAttrCase<"F32_32x32x16_F16", 0x1322, "f32_32x32x16_f16">,
+  I32EnumAttrCase<"F32_16x16x32_F16", 0x1323, "f32_16x16x32_f16">,
+
 ]> {
   let cppNamespace = "::wave";
   let genSpecializedAttr = 0;
