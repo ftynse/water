@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "water/Dialect/Wave/IR/WaveOps.h"
+#include "water/Dialect/Wave/IR/WaveAttrs.h"
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -66,6 +67,9 @@ static void printSingleSymbol(mlir::OpAsmPrinter &printer, mlir::Operation *,
   printer.printSymbolName(symbolAttr.getName());
 }
 
+using namespace mlir;
+using namespace wave;
+
 #define GET_OP_CLASSES
 #include "water/Dialect/Wave/IR/WaveOps.cpp.inc"
 
@@ -99,14 +103,14 @@ verifyTypesMatchingDimensions(std::optional<mlir::Location> loc,
 
   // Under-specified types are okay everywhere.
   if (!lhs.getFullySpecified() || !rhs.getFullySpecified())
-    return mlir::success();
+    return success();
 
   llvm::SmallVector<int> lhsDimsVec(lhsDims), rhsDimsVec(rhsDims);
   updateNegativeIndices(lhsDimsVec, lhs.getRank());
   updateNegativeIndices(rhsDimsVec, rhs.getRank());
   for (auto &&[lhsDim, rhsDim] : llvm::zip_equal(lhsDimsVec, rhsDimsVec)) {
-    wave::WaveSymbolAttr lhsExpr = lhs.getShape()[lhsDim];
-    wave::WaveSymbolAttr rhsExpr = rhs.getShape()[rhsDim];
+    WaveSymbolAttr lhsExpr = lhs.getShape()[lhsDim];
+    WaveSymbolAttr rhsExpr = rhs.getShape()[rhsDim];
     if (lhsExpr == rhsExpr)
       continue;
 
@@ -118,7 +122,7 @@ verifyTypesMatchingDimensions(std::optional<mlir::Location> loc,
     }
     return mlir::failure();
   }
-  return mlir::success();
+  return success();
 }
 
 // Verify that element types of Wave tensors match between LHS and RHS. Emit
@@ -128,7 +132,7 @@ verifyElementTypesMatch(std::optional<mlir::Location> loc,
                         llvm::StringRef lhsName, wave::WaveTensorType lhs,
                         llvm::StringRef rhsName, wave::WaveTensorType rhs) {
   if (lhs.getElementType() == rhs.getElementType())
-    return mlir::success();
+    return success();
 
   if (loc) {
     mlir::emitError(*loc) << "expected " << lhsName << " and " << rhsName
@@ -342,7 +346,11 @@ static mlir::LogicalResult checkMmaTypeCompatibility(mlir::Location loc,
   return mlir::success(success);
 }
 
-mlir::LogicalResult wave::MmaOp::verify() {
+//===----------------------------------------------------------------------===//
+// MmaOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult MmaOp::verify() {
   WaveTensorType lhsType = getLhs().getType();
   WaveTensorType rhsType = getRhs().getType();
   WaveTensorType accumulatorType = getAccumulator().getType();

@@ -68,6 +68,44 @@ func.func @iterate(%input0: !wave.tensor<any of f32>, %input1: !wave.tensor<any 
 func.func @register() {
   %0 = arith.constant 0.0 : f32
   // CHECK: wave.register %{{.*}} : !wave.tensor<[@Y, @Z] of f32>
-  wave.register %0 : !wave.tensor<[@Y, @Z] of f32>
+  %register = wave.register %0 : !wave.tensor<[@Y, @Z] of f32>
+  return
+}
+
+// CHECK-LABEL: @register_with_symbols
+func.func @register_with_symbols() {
+  %0 = arith.constant 0.0 : f32
+  // CHECK: wave.register
+  %register = wave.register %0
+    index {
+      M : [THREAD_ID, BLOCK_SIZE] -> (THREAD_ID floordiv BLOCK_SIZE, 1, 1),
+      N : [THREAD_ID, BLOCK_SIZE] -> (THREAD_ID * BLOCK_SIZE + 42, 1, 1)
+    }
+    : !wave.tensor<[@M, @N] of f32, <register>>
+  return
+}
+
+
+// CHECK-LABEL: @register_with_symbols_complex_index
+func.func @register_with_symbols_complex_index() {
+  %0 = arith.constant 0.0 : f32
+  // CHECK: wave.register
+  %register = wave.register %0
+    index {
+      B : [WG2, BLOCK_B] -> (WG2 * (BLOCK_B+BLOCK_B), BLOCK_B * (WG2+WG2), WG2 * BLOCK_B),
+      M : [WG0, BLOCK_M, T0] -> (WG0 * BLOCK_M + BLOCK_M * ((T0 floordiv 64) floordiv 2) + T0 mod 32, 1, 1),
+      N : [T1, BLOCK_N, WG1, GPR_NUM, T0] -> (T1 * (BLOCK_N floordiv 2) + BLOCK_N * WG1 + GPR_NUM mod 4 + ((GPR_NUM floordiv 4) mod 4) * 8 + ((T0 mod 64) floordiv 32) * 4, 1, 1)
+    }
+    : !wave.tensor<[@B, @N, @M] of f32, <register>>
+  return
+}
+
+
+// CHECK-LABEL: @register_with_symbols_empty_symbol_list
+func.func @register_with_symbols_empty_symbol_list() {
+  %0 = arith.constant 0.0 : f32
+  // CHECK: wave.register
+  %register = wave.register %0 index {B : [] -> (0, 1, 1)}
+    : !wave.tensor<[@B] of f32, <register>>
   return
 }

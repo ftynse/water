@@ -80,3 +80,31 @@ func.func @iterate_mismatching_results(%arg0: !wave.tensor<[@A] of f32>, %arg1: 
     wave.yield %arg2, %arg3 : !wave.tensor<[@B] of f32>, !wave.tensor<any of f32>
   } : (!wave.tensor<[@A] of f32>, !wave.tensor<any of f32>) -> (!wave.tensor<any of f32>, !wave.tensor<any of f32>)
 }
+
+// -----
+
+// must provide the full triple (start, step, stride)
+func.func @index_attr_missing_step_stride(%arg0: f32) {
+  // expected-error @+2 {{expected ','}}
+  // expected-error @+1 {{custom op 'wave.register' expected three affine expressions for '(start, step, stride)'}}
+  wave.register %arg0 index {X : [WG0] -> (WG0)} : !wave.tensor<[@M] of f32, <register>>
+  return
+}
+
+// -----
+
+// must provide the full triple (start, step, stride)
+func.func @index_attr_missing_stride(%arg0: f32) {
+  // expected-error @+2 {{expected ','}}
+  // expected-error @+1 {{custom op 'wave.register' expected three affine expressions for '(start, step, stride)'}}
+  wave.register %arg0 index {X : [WG0] -> (WG0, 1)} : !wave.tensor<[@M] of f32, <register>>
+  return
+}
+
+// -----
+
+func.func @index_attr_not_dict(%arg0: f32) {
+  // expected-error @+1 {{'wave.register' op attribute 'index' failed to satisfy constraint: dictionary of named attribute values}}
+  "wave.register"(%arg0) { index = 42 } : (f32) -> !wave.tensor<[@M] of f32, <register>>
+  return
+}
