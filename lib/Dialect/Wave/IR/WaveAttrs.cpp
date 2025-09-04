@@ -65,9 +65,7 @@ Attribute WaveIndexMappingAttr::parse(AsmParser &parser, Type type) {
     symbolSet.reserve(names.size());
     for (auto [i, nm] : llvm::enumerate(names))
       symbolSet.emplace_back(nm, getAffineSymbolExpr(i, context));
-    if (failed(parser.parseAffineExpr(symbolSet, outExpr)))
-      return failure();
-    return success();
+    return parser.parseAffineExpr(symbolSet, outExpr);
   };
 
   AffineExpr startExpr;
