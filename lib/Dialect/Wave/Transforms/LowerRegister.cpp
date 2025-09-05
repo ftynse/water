@@ -27,6 +27,7 @@ public:
       return rewriter.notifyMatchFailure(op,
                                          "WaveTensorType conversion failed");
     }
+    convertedType.dump();
     auto vectorType = dyn_cast<VectorType>(convertedType);
     if (!vectorType) {
       return rewriter.notifyMatchFailure(
