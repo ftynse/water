@@ -97,8 +97,8 @@ def HardwareConstraintAttr : AttrDef<WaveDialect, "HardwareConstraint"> {
   }];
   let parameters = (ins "unsigned":$threads_per_wave,
                         OptionalArrayRefParameter<"unsigned">:$waves_per_block,
-                        OptionalParameter<"WaveMmaKindAttr">:$mma_type,
-                        OptionalParameter<"mlir::DictionaryAttr">:$vector_shapes,
+                        OptionalParameter<"::wave::WaveMmaKindAttr">:$mma_type,
+                        OptionalParameter<"::mlir::DictionaryAttr">:$vector_shapes,
                         DefaultValuedParameter<"unsigned", "128">:$max_bits_per_load);
 
   let assemblyFormat = [{
@@ -121,12 +121,12 @@ def WorkgroupConstraintAttr : AttrDef<WaveDialect, "WorkgroupConstraint"> {
     dimension. This translates to an index constraint for all tensors of the
     shape [M, ?] -> index += (workgroup_id_0 * BLOCK_M, 0)
   }];
-  let parameters = (ins "WaveExpressionAttr":$dim,
-                        "WaveExpressionAttr":$tile_size,
+  let parameters = (ins "::wave::WaveSymbolAttr":$dim,
+                        "::wave::WaveExpressionAttr":$tile_size,
                         "unsigned":$workgroup_dim,
                         DefaultValuedParameter<"bool", "true">:$primary,
-                        OptionalParameter<"WaveExpressionAttr">:$iters,
-                        OptionalParameter<"WaveExpressionAttr">:$per_device_dim);
+                        OptionalParameter<"::wave::WaveExpressionAttr">:$iters,
+                        OptionalParameter<"::wave::WaveExpressionAttr">:$per_device_dim);
 
   let assemblyFormat = [{
     `<` `dim` `=` $dim
@@ -147,11 +147,11 @@ def TilingConstraintAttr : AttrDef<WaveDialect, "TilingConstraint"> {
     BLOCK_K * i, where i is the induction variable associated with the
     loop around dimension K.
   }];
-  let parameters = (ins "WaveExpressionAttr":$dim,
-                        OptionalParameter<"WaveExpressionAttr">:$tile_size,
-                        OptionalParameter<"WaveExpressionAttr">:$induction_var,
-                        OptionalParameter<"WaveExpressionAttr">:$iters,
-                        OptionalParameter<"WaveExpressionAttr">:$start);
+  let parameters = (ins "::wave::WaveExpressionAttr":$dim,
+                        OptionalParameter<"::wave::WaveExpressionAttr">:$tile_size,
+                        OptionalParameter<"::wave::WaveExpressionAttr">:$induction_var,
+                        OptionalParameter<"::wave::WaveExpressionAttr">:$iters,
+                        OptionalParameter<"::wave::WaveExpressionAttr">:$start);
 
   let assemblyFormat = [{
     `<` `dim` `=` $dim
@@ -189,10 +189,10 @@ def WaveConstraintAttr : AttrDef<WaveDialect, "WaveConstraint"> {
     wave_id_1 = thread_id_1
     wave_id_2 = thread_id_2
   }];
-  let parameters = (ins "WaveExpressionAttr":$dim,
-                        "WaveExpressionAttr":$tile_size,
-                        OptionalParameter<"WaveExpressionAttr">:$wave_id,
-                        OptionalParameter<"WorkgroupConstraintAttr">:$wg_constraint);
+  let parameters = (ins "::wave::WaveSymbolAttr":$dim,
+                        "::wave::WaveExpressionAttr":$tile_size,
+                        OptionalParameter<"::wave::WaveExpressionAttr">:$wave_id,
+                        OptionalParameter<"::wave::WorkgroupConstraintAttr">:$wg_constraint);
 
   let assemblyFormat = [{
     `<` `dim` `=` $dim
@@ -213,7 +213,7 @@ def ReorderingConstraintAttr : AttrDef<WaveDialect, "ReorderingConstraint"> {
     and since a ReorderingConstraint only shifts the positioning of workgroups after this,
     this class does not extend DistributionConstraint.
   }];
-  let parameters = (ins "WaveExpressionAttr":$reordered_equation,
+  let parameters = (ins "::wave::WaveExpressionAttr":$reordered_equation,
                         "unsigned":$workgroup_dim);
   let assemblyFormat = [{
     `<` `reordered_equation` `=` $reordered_equation `,` `workgroup_dim` `=` $workgroup_dim `>`
@@ -224,7 +224,7 @@ def IteratorBindingAttr : AttrDef<WaveDialect, "IteratorBinding"> {
   let mnemonic = "iterator_binding";
   let summary = [{TODO}];
   let description = [{TODO}];
-  let parameters = (ins OptionalParameter<"mlir::DictionaryAttr">:$binding);
+  let parameters = (ins OptionalParameter<"::mlir::DictionaryAttr">:$binding);
   let assemblyFormat = "`<` $binding `>`";
   let genVerifyDecl = 1;
 }
@@ -251,8 +251,8 @@ def DeviceConstraintAttr : AttrDef<WaveDialect, "DeviceConstraint"> {
     across the devices, where DEVICE_M and DEVICE_N are the tile sizes for
     dimensions M and N respectively.
   }];
-  let parameters = (ins "WaveExpressionAttr":$dim,
-                        "WaveExpressionAttr":$tile_size,
+  let parameters = (ins "::wave::WaveSymbolAttr":$dim,
+                        "::wave::WaveExpressionAttr":$tile_size,
                         "unsigned":$device_dim);
 
   let assemblyFormat = [{
