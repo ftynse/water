@@ -76,7 +76,7 @@ def WaveMmaKindAttr : EnumAttr<WaveDialect, WaveMmaKindEnum, "mma_kind"> {
 // Constraint attributes
 //-----------------------------------------------------------------------------
 
-def WaveHardwareConstraintAttr : AttrDef<WaveDialect, "WaveHardwareConstraint"> {
+def HardwareConstraintAttr : AttrDef<WaveDialect, "HardwareConstraint"> {
   let mnemonic = "hardware_constraint";
   let description = [{
     A constraint of the form
@@ -103,7 +103,7 @@ def WaveHardwareConstraintAttr : AttrDef<WaveDialect, "WaveHardwareConstraint"> 
   let assemblyFormat = "`<` $threads_per_wave `,` $vector_shapes `,` $waves_per_block `,` $max_bits_per_load `>`";
 }
 
-def WaveWorkgroupConstraintAttr : AttrDef<WaveDialect, "WaveWorkgroupConstraint"> {
+def WorkgroupConstraintAttr : AttrDef<WaveDialect, "WorkgroupConstraint"> {
   let mnemonic = "workgroup_constraint";
   let description = [{
     A constraint of the form `tkw.WorkgroupConstraint(M, BLOCK_M, 0)`
@@ -121,7 +121,7 @@ def WaveWorkgroupConstraintAttr : AttrDef<WaveDialect, "WaveWorkgroupConstraint"
   let assemblyFormat = "`<` $dim `,` $tile_size `,` $workgroup_dim `,` $primary `,` $iters `,` $per_device_dim `>`";
 }
 
-def WaveTilingConstraintAttr : AttrDef<WaveDialect, "WaveTilingConstraint"> {
+def TilingConstraintAttr : AttrDef<WaveDialect, "TilingConstraint"> {
   let mnemonic = "tiling_constraint";
   let description = [{
     A constraint of the form `tkw.TilingConstraint(K, BLOCK_K)` specifies
@@ -138,7 +138,7 @@ def WaveTilingConstraintAttr : AttrDef<WaveDialect, "WaveTilingConstraint"> {
   let assemblyFormat = "`<` $dim `,` $tile_size `,` $induction_var `,` $iters `,` $start `>`";
 }
 
-def WaveWaveConstraintAttr : AttrDef<WaveDialect, "WaveWaveConstraint"> {
+def WaveConstraintAttr : AttrDef<WaveDialect, "WaveConstraint"> {
   let mnemonic = "wave_constraint";
   let description = [{
     A constraint of the form `tkw.WaveConstraint(K, WAVE_K)` specifies
@@ -168,11 +168,11 @@ def WaveWaveConstraintAttr : AttrDef<WaveDialect, "WaveWaveConstraint"> {
   let parameters = (ins "WaveExpressionAttr":$dim,
                         "WaveExpressionAttr":$tile_size,
                         OptionalParameter<"WaveExpressionAttr">:$wave_id,
-                        OptionalParameter<"WaveWorkgroupConstraintAttr">:$wg_constraint);
+                        OptionalParameter<"WorkgroupConstraintAttr">:$wg_constraint);
   let assemblyFormat = "`<` $dim `,` $tile_size (`,` $wave_id^)? (`,` $wg_constraint^)? `>`";
 }
 
-def WaveReorderingConstraintAttr : AttrDef<WaveDialect, "WaveReorderingConstraint"> {
+def ReorderingConstraintAttr : AttrDef<WaveDialect, "ReorderingConstraint"> {
   let mnemonic = "reordering_constraint";
   let description = [{
     A constraint of the form `tkw.ReorderingConstraint(new_wg0, 0)`
@@ -188,7 +188,7 @@ def WaveReorderingConstraintAttr : AttrDef<WaveDialect, "WaveReorderingConstrain
   let assemblyFormat = "`<` $reordered_equation `,` $workgroup_dim `>`";
 }
 
-def WaveIteratorBindingAttr : AttrDef<WaveDialect, "WaveIteratorBinding"> {
+def IteratorBindingAttr : AttrDef<WaveDialect, "IteratorBinding"> {
   let mnemonic = "iterator_binding";
   let summary = [{TODO}];
   let description = [{TODO}];
@@ -196,7 +196,7 @@ def WaveIteratorBindingAttr : AttrDef<WaveDialect, "WaveIteratorBinding"> {
   let assemblyFormat = "`<` $binding `>`";
 }
 
-def WaveDeviceConstraintAttr : AttrDef<WaveDialect, "WaveDeviceConstraint"> {
+def DeviceConstraintAttr : AttrDef<WaveDialect, "DeviceConstraint"> {
   let mnemonic = "device_constraint";
   let description = [{
     A constraint of the form `tkw.DeviceConstraint(M, DEVICE_M, <device dimension>)` specifies
