@@ -64,7 +64,7 @@ public:
 
 } // namespace
 
-void mlir::water::populateWaveRegisterLoweringPatterns(
+void wave::populateWaveRegisterLoweringPatterns(
     WaveTensorTypeConverter &typeConverter, RewritePatternSet &patterns) {
   patterns.add<RegisterOpLoweringPattern>(typeConverter, patterns.getContext());
 }

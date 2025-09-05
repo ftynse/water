@@ -10,20 +10,16 @@
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 
-namespace mlir {
-class RewritePatternSet;
+namespace wave {
 
-namespace water {
-
-struct WaveTensorTypeConverter : public TypeConverter {
+struct WaveTensorTypeConverter : public mlir::TypeConverter {
   WaveTensorTypeConverter();
 };
 
 // Adds pattern that lowers `wave.register` to upstream MLIR ops.
 void populateWaveRegisterLoweringPatterns(
-    WaveTensorTypeConverter &typeConverter, RewritePatternSet &patterns);
+    WaveTensorTypeConverter &typeConverter, mlir::RewritePatternSet &patterns);
 
-} // namespace water
-} // namespace mlir
+} // namespace wave
 
 #endif // WATER_DIALECT_WAVE_TRANSFORMS_TRANSFORMS_H

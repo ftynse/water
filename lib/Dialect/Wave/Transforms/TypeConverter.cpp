@@ -13,14 +13,17 @@
 
 #define DEBUG_TYPE "wave-tensor-type-converter"
 
-mlir::water::WaveTensorTypeConverter::WaveTensorTypeConverter() {
+using namespace mlir;
+
+wave::WaveTensorTypeConverter::WaveTensorTypeConverter() {
   addConversion([](Type type) -> std::optional<Type> {
     if (auto waveType = dyn_cast<wave::WaveTensorType>(type)) {
       auto shape = waveType.getResolvedShape();
       // Fail if shapes aren't resolved
       if (shape.empty()) {
         LLVM_DEBUG({
-          llvm::dbgs() << "WaveTensorType conversion failed: symbolic shape unresolved\n";
+          llvm::dbgs() << "WaveTensorType conversion failed: symbolic shape "
+                          "unresolved\n";
         });
         return std::nullopt;
       }

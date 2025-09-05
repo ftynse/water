@@ -36,8 +36,8 @@ void registerAllPasses();
 
 int main(int argc, char **argv) {
   mlir::water::registerPasses();
-  mlir::water::wave::registerPasses();
   mlir::water::test::registerAllPasses();
+  wave::registerPasses();
 
   mlir::arith::registerArithIntRangeOptsPass();
   mlir::registerCanonicalizerPass();

@@ -27,16 +27,16 @@ struct LowerWaveToMLIRPass
 
   void runOnOperation() override {
     MLIRContext *ctx = &getContext();
-    mlir::Operation* op = getOperation();
+    mlir::Operation *op = getOperation();
 
-    mlir::water::WaveTensorTypeConverter typeConverter;
+    wave::WaveTensorTypeConverter typeConverter;
     ConversionTarget target(*ctx);
 
     target.addLegalDialect<arith::ArithDialect, vector::VectorDialect>();
     target.addIllegalOp<wave::RegisterOp>();
 
     RewritePatternSet patterns(ctx);
-    mlir::water::populateWaveRegisterLoweringPatterns(typeConverter, patterns);
+    wave::populateWaveRegisterLoweringPatterns(typeConverter, patterns);
 
     if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
       signalPassFailure();
@@ -46,6 +46,6 @@ struct LowerWaveToMLIRPass
 
 } // namespace
 
-std::unique_ptr<Pass> mlir::water::wave::createLowerWaveToMLIRPass() {
+std::unique_ptr<Pass> wave::createLowerWaveToMLIRPass() {
   return std::make_unique<LowerWaveToMLIRPass>();
 }

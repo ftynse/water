@@ -10,10 +10,7 @@
 #include "mlir/Pass/Pass.h"
 #include <memory>
 
-namespace mlir {
-namespace water {
 namespace wave {
-class WaveTypeConverter;
 
 #define GEN_PASS_DECL
 #include "water/Dialect/Wave/Transforms/Passes.h.inc"
@@ -22,7 +19,5 @@ class WaveTypeConverter;
 #include "water/Dialect/Wave/Transforms/Passes.h.inc"
 
 } // namespace wave
-} // namespace water
-} // namespace mlir
 
 #endif // WATER_DIALECT_WAVE_TRANSFORMS_PASSES_H
