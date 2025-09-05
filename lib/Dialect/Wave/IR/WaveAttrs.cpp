@@ -210,7 +210,7 @@ LogicalResult HardwareConstraintAttr::verify(
     DictionaryAttr vectorShapes, unsigned maxBitsPerLoad) {
 
   if (vectorShapes && wavesPerBlock.size() != vectorShapes.size())
-    return emitError() << "waves_per_block " << wavesPerBlock
+    return emitError() << "waves_per_block (" << wavesPerBlock
                        << ") does should have the same size as vector_shapes ("
                        << vectorShapes << ")";
 
