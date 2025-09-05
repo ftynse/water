@@ -30,7 +30,7 @@ wave::WaveTensorTypeConverter::WaveTensorTypeConverter() {
       // Convert WaveTensorInRegister to VectorType, and WaveTensorInMemory to
       // MemRefType
       auto addrSpace = waveType.getAddressSpaceValue();
-      if (addrSpace == wave::WaveAddressSpace::Unspecified)
+      if (addrSpace == wave::WaveAddressSpace::Register)
         return VectorType::get(shape, waveType.getElementType());
       // TODO: add gpu memory space
       return MemRefType::get(shape, waveType.getElementType());
