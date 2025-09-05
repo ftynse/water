@@ -151,7 +151,7 @@ void WaveIndexMappingAttr::print(AsmPrinter &printer) const {
 //===----------------------------------------------------------------------===//
 
 Attribute WaveExpressionAttr::parse(AsmParser &parser, Type type) {
-  // Parse custom syntax: '[' symbol-names ']' '->' '(' start, step, stride ')'
+  // Parse custom syntax: '[' symbol-names ']' '->' '(' expr ')'
   // This preserves meaningful symbol names while leveraging the existing
   // affine parser.
   SmallVector<WaveSymbolAttr> symbolNameAttrs;
@@ -184,7 +184,7 @@ Attribute WaveExpressionAttr::parse(AsmParser &parser, Type type) {
 }
 
 void WaveExpressionAttr::print(AsmPrinter &printer) const {
-  // Print '[' symbol-names '] -> (start, step, stride)'.
+  // Print '[' symbol-names '] -> (expr)'.
   // We keep one global symbol list (symbol_names) for all three expressions.
   // Each expression is an affine map with the same numSymbols; we substitute
   // s0, s1, ... using the shared names when rendering each expression.
