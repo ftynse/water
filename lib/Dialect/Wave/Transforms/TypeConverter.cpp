@@ -6,6 +6,7 @@
 
 #include "water/Dialect/Wave/Transforms/LoweringPatterns.h"
 
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "water/Dialect/Wave/IR/WaveTypes.h"
 
@@ -19,7 +20,7 @@ wave::WaveTensorTypeConverter::WaveTensorTypeConverter() {
   addConversion([](Type type) -> std::optional<Type> {
     if (auto waveType = dyn_cast<wave::WaveTensorType>(type)) {
       auto shape = waveType.getResolvedShape();
-      // Fail if shapes aren't resolved
+      // Fail if shapes aren't resolved.
       if (shape.empty()) {
         LLVM_DEBUG({
           llvm::dbgs() << "WaveTensorType conversion failed: symbolic shape "
@@ -28,14 +29,45 @@ wave::WaveTensorTypeConverter::WaveTensorTypeConverter() {
         return std::nullopt;
       }
       // Convert WaveTensorInRegister to VectorType, and WaveTensorInMemory to
-      // MemRefType
-      auto addrSpace = waveType.getAddressSpaceValue();
-      if (addrSpace == wave::WaveAddressSpace::Register)
-        return VectorType::get(shape, waveType.getElementType());
-      // TODO: add gpu memory space
-      return MemRefType::get(shape, waveType.getElementType());
+      // MemRefType with proper memory space.
+      wave::WaveAddressSpace addrSpace = waveType.getAddressSpaceValue();
+      Type elementType = waveType.getElementType();
+
+      switch (addrSpace) {
+      case wave::WaveAddressSpace::Unspecified:
+        return VectorType::get(shape, elementType);
+
+      case wave::WaveAddressSpace::Global: {
+        // GPU global memory (device memory)
+        auto globalMemoryAddressSpace = gpu::AddressSpaceAttr::get(
+            elementType.getContext(), gpu::AddressSpace::Global);
+        return MemRefType::get(shape, elementType,
+                               /*layout=*/MemRefLayoutAttrInterface{},
+                               Attribute(globalMemoryAddressSpace));
+      }
+
+      case wave::WaveAddressSpace::Shared: {
+        // GPU shared memory
+        auto workgroupMemoryAddressSpace = gpu::AddressSpaceAttr::get(
+            elementType.getContext(), gpu::AddressSpace::Workgroup);
+        return MemRefType::get(shape, elementType,
+                               /*layout=*/MemRefLayoutAttrInterface{},
+                               Attribute(workgroupMemoryAddressSpace));
+      }
+
+      case wave::WaveAddressSpace::Register:
+        // For register space, use vector type (registers are handled by LLVM)
+        return VectorType::get(shape, elementType);
+
+      default:
+        LLVM_DEBUG({
+          llvm::dbgs() << "Unknown WaveAddressSpace: "
+                       << static_cast<int>(addrSpace) << "\n";
+        });
+        return std::nullopt;
+      }
     }
-    // Mark all other types as legal
+    // Mark all other types as legal.
     return type;
   });
 

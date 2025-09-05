@@ -12,6 +12,7 @@ add_mlir_dialect_library(MLIRLowerWaveTransforms
   LINK_LIBS PUBLIC
   MLIRArithDialect
   MLIRFuncDialect
+  MLIRGPUDialect
   MLIRIR
   MLIRPass
   MLIRTransforms
