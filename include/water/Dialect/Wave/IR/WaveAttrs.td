@@ -98,9 +98,15 @@ def WaveWorkgroupDimAttr
 def HardwareConstraintAttr : AttrDef<WaveDialect, "HardwareConstraint"> {
   let mnemonic = "hardware_constraint";
   let description = [{
-    A constraint of the form
-        tkw.HardwareConstraint(threads_per_wave = N,
-                               mma_type = 'MFMA_F32_16x16x16_F16')
+    A constraint of the form:
+    ```mlir
+    #wave.hardware_constraint<threads_per_wave = 64,
+                              waves_per_block = [1, 1, 1],
+                              mma_type = #wave.mma_kind<f32_16x16x16_f16>,
+                              vector_shapes = {M = 1, N = 1, K = 64},
+                              max_bits_per_load = 128>
+    ```
+
     specifies that the hardware supports N threads per wave and that
     we want all mma operations in the microkernel to be
     mapped to a hardware mma instruction of shape (16x16x16).
@@ -134,7 +140,16 @@ def HardwareConstraintAttr : AttrDef<WaveDialect, "HardwareConstraint"> {
 def WorkgroupConstraintAttr : AttrDef<WaveDialect, "WorkgroupConstraint"> {
   let mnemonic = "workgroup_constraint";
   let description = [{
-    A constraint of the form `tkw.WorkgroupConstraint(M, BLOCK_M, 0)`
+    A constraint of the form:
+    ```mlir
+    #wave.workgroup_constraint<dim = <"M">,
+                               tile_size = [BLOCK_M] -> (BLOCK_M floordiv 4),
+                               workgroup_dim = <x>,
+                               primary = true,
+                               iters = [M] -> (M),
+                               per_device_dim = <"DEVICE_M">>
+    ```
+
     specifies that we want to distribute dimension M along workgroup dim 0
     with a tile size of BLOCK_M resulting in M // BLOCK_M workgroups along that
     dimension. This translates to an index constraint for all tensors of the
@@ -160,8 +175,16 @@ def WorkgroupConstraintAttr : AttrDef<WaveDialect, "WorkgroupConstraint"> {
 def TilingConstraintAttr : AttrDef<WaveDialect, "TilingConstraint"> {
   let mnemonic = "tiling_constraint";
   let description = [{
-    A constraint of the form `tkw.TilingConstraint(K, BLOCK_K)` specifies
-    that we want to tile the K dimension with a tile size of BLOCK_K. This
+    A constraint of the form:
+    ```mlir
+    #wave.tiling_constraint<dim = <"K">,
+                            tile_size = [BLOCK_K] -> (BLOCK_K),
+                            induction_var = [ARGK] -> (ARGK),
+                            iters = [SPLIT_LEN, BLOCK_K] -> (SPLIT_LEN floordiv BLOCK_K),
+                            start = [SPLIT_OFF] -> (SPLIT_OFF)>
+    ```
+
+    specifies that we want to tile the K dimension with a tile size of BLOCK_K. This
     adds an index constraint to the K-th dimension of a tensor of the form
     BLOCK_K * i, where i is the induction variable associated with the
     loop around dimension K.
@@ -184,7 +207,14 @@ def TilingConstraintAttr : AttrDef<WaveDialect, "TilingConstraint"> {
 def WaveConstraintAttr : AttrDef<WaveDialect, "WaveConstraint"> {
   let mnemonic = "wave_constraint";
   let description = [{
-    A constraint of the form `tkw.WaveConstraint(K, WAVE_K)` specifies
+    A constraint of the form:
+    ```mlir
+    #wave.wave_constraint<dim = <"K">,
+                          tile_size = [BLOCK_K] -> (BLOCK_K floordiv 4),
+                          wave_id = [THREAD_0] -> (THREAD_0 floordiv 64),
+                          wg_constraint = #wg_constraint>
+    ```
+
     that we want distribute the K dimension among multiple waves which
     each wave operating on a tile size of WAVE_K. The assumption is
     that the K dimension has already been distributed among workgroups.
@@ -224,7 +254,12 @@ def WaveConstraintAttr : AttrDef<WaveDialect, "WaveConstraint"> {
 def ReorderingConstraintAttr : AttrDef<WaveDialect, "ReorderingConstraint"> {
   let mnemonic = "reordering_constraint";
   let description = [{
-    A constraint of the form `tkw.ReorderingConstraint(new_wg0, 0)`
+    A constraint of the form:
+    ```mlir
+    #wave.reordering_constraint<reordered_equation = [M, BLOCK_M] -> (M ceildiv BLOCK_M),
+                                workgroup_dim = <x>>
+    ```
+
     specifies how workgroups are mapped to data along workgroup dim 0,
     according to the 'new_wg0' expression.
     The internal indexing of waves and threads within the workgroup do not change.
@@ -251,8 +286,12 @@ def IteratorBindingAttr : AttrDef<WaveDialect, "IteratorBinding"> {
 def DeviceConstraintAttr : AttrDef<WaveDialect, "DeviceConstraint"> {
   let mnemonic = "device_constraint";
   let description = [{
-    A constraint of the form `tkw.DeviceConstraint(M, DEVICE_M, <device dimension>)` specifies
-    that we want to distribute dimension M along the device with a tile size of DEVICE_M.
+    A constraint of the form:
+    ```mlir
+    #wave.device_constraint<dim = <"M">, tile_size = [DEVICE_M] -> (DEVICE_M), device_dim = 0>
+    ```
+
+    specifies that we want to distribute dimension M along the device with a tile size of DEVICE_M.
     This translates to an index constraint for all tensors of the shape [M, ?] ->
     index += (device_id * DEVICE_M, 0), where device_id is the id
     of the device on which the tensor is located.
