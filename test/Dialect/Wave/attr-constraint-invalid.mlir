@@ -6,12 +6,12 @@
 						  vector_shapes = {@B: 1, @M: 1, @N: 64},
 						  max_bits_per_load = 128>
 
-#wave.workgroup_constraint<dim = @M,
-                           tile_size = @BLOCK_M floordiv 4,
+#wave.workgroup_constraint<dim = [M] -> (M),
+                           tile_size = [BLOCK_M] -> (BLOCK_M floordiv 4),
                            workgroup_dim = 0,
                            primary = true,
-                           iters = @M - 1,
-                           per_device_dim = @M>
+                           iters = [M] -> (M - 1),
+                           per_device_dim = [M] -> (M)>
 
 #wave.tiling_constraint<dim = @M,
                         tile_size = @BLOCK_M floordiv 4,
