@@ -288,6 +288,7 @@ def WaveSymbolAttr : AttrDef<WaveDialect, "WaveSymbol"> {
 }
 
 def WaveExpressionAttr : AttrDef<WaveDialect, "WaveExpression"> {
+  // TOOD: reuse some code between this and WaveIndexMappingAttr
   let mnemonic = "wave_expr";
   let description = [{
     Base symbolic expression used in the Wave dialect.
