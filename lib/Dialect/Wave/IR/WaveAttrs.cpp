@@ -205,17 +205,16 @@ void WaveExpressionAttr::print(AsmPrinter &printer) const {
 //-----------------------------------------------------------------------------
 
 LogicalResult HardwareConstraintAttr::verify(
-    function_ref<::mlir::InFlightDiagnostic()> emitError,
-    unsigned threadsPerWave, ArrayRef<unsigned> wavesPerBlock,
-    WaveMmaKindAttr mmaType, DictionaryAttr vectorShapes,
-    unsigned maxBitsPerLoad) {
+    function_ref<InFlightDiagnostic()> emitError, unsigned threadsPerWave,
+    ArrayRef<unsigned> wavesPerBlock, WaveMmaKindAttr mmaType,
+    DictionaryAttr vectorShapes, unsigned maxBitsPerLoad) {
 
   if (vectorShapes && wavesPerBlock.size() != vectorShapes.size())
     return emitError() << "waves_per_block " << wavesPerBlock
                        << ") does should have the same size as vector_shapes ("
                        << vectorShapes << ")";
 
-  if (vectorShapes)
+  if (vectorShapes) {
     for (NamedAttribute attr : vectorShapes) {
       // TODO: verify that attr.getName() is a valid WaveSymbol
       Attribute value = attr.getValue();
@@ -224,13 +223,14 @@ LogicalResult HardwareConstraintAttr::verify(
         return emitError() << attr.getName()
                            << " is not an IntegerAttr: " << attr.getValue();
     }
+  }
 
   return success();
 }
 
-LogicalResult IteratorBindingAttr::verify(
-    function_ref<::mlir::InFlightDiagnostic()> emitError,
-    DictionaryAttr binding) {
+LogicalResult
+IteratorBindingAttr::verify(function_ref<InFlightDiagnostic()> emitError,
+                            DictionaryAttr binding) {
 
   for (NamedAttribute attr : binding) {
     // TODO: verify that attr.getName() is a valid WaveSymbol
