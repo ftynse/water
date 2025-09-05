@@ -73,6 +73,25 @@ def WaveMmaKindAttr : EnumAttr<WaveDialect, WaveMmaKindEnum, "mma_kind"> {
 }
 
 //-----------------------------------------------------------------------------
+// Address space enum and attribute
+//-----------------------------------------------------------------------------
+
+def WaveWorkgroupDimEnum
+    : I32EnumAttr<"WaveWorkgroupDim", "Workgroup dimensions", [
+  I32EnumAttrCase<"X", 0, "x">,
+  I32EnumAttrCase<"Y", 1, "y">,
+  I32EnumAttrCase<"Z", 2, "z">,
+]> {
+  let cppNamespace = "::wave";
+  let genSpecializedAttr = 0;
+}
+
+def WaveWorkgroupDimAttr
+    : EnumAttr<WaveDialect, WaveWorkgroupDimEnum, "workgroup_dim"> {
+  let assemblyFormat = "`<` $value `>`";
+}
+
+//-----------------------------------------------------------------------------
 // Constraint attributes
 //-----------------------------------------------------------------------------
 
@@ -123,7 +142,7 @@ def WorkgroupConstraintAttr : AttrDef<WaveDialect, "WorkgroupConstraint"> {
   }];
   let parameters = (ins "::wave::WaveSymbolAttr":$dim,
                         "::wave::WaveExpressionAttr":$tile_size,
-                        "unsigned":$workgroup_dim,
+                        "::wave::WaveWorkgroupDimAttr":$workgroup_dim,
                         DefaultValuedParameter<"bool", "true">:$primary,
                         OptionalParameter<"::wave::WaveExpressionAttr">:$iters,
                         OptionalParameter<"::wave::WaveSymbolAttr">:$per_device_dim);
@@ -214,7 +233,7 @@ def ReorderingConstraintAttr : AttrDef<WaveDialect, "ReorderingConstraint"> {
     this class does not extend DistributionConstraint.
   }];
   let parameters = (ins "::wave::WaveExpressionAttr":$reordered_equation,
-                        "unsigned":$workgroup_dim);
+                        "::wave::WaveWorkgroupDimAttr":$workgroup_dim);
   let assemblyFormat = [{
     `<` `reordered_equation` `=` $reordered_equation `,` `workgroup_dim` `=` $workgroup_dim `>`
   }];

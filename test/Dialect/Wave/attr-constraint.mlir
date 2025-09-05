@@ -13,15 +13,15 @@ func.func private @test_hw1() attributes { wave.constraints = [#wave.hardware_co
 func.func private @test_hw2() attributes { wave.constraints = [#hw_constraint2] }
 
 
-// CHECK: #wave.workgroup_constraint<dim = <"M">, tile_size = [BLOCK_M] -> (BLOCK_M floordiv 4), workgroup_dim = 0>
-#wg_constraint1 = #wave.workgroup_constraint<dim = <"M">, tile_size = [BLOCK_M] -> (BLOCK_M floordiv 4), workgroup_dim = 0>
+// CHECK: #wave.workgroup_constraint<dim = <"M">, tile_size = [BLOCK_M] -> (BLOCK_M floordiv 4), workgroup_dim = <x>>
+#wg_constraint1 = #wave.workgroup_constraint<dim = <"M">, tile_size = [BLOCK_M] -> (BLOCK_M floordiv 4), workgroup_dim = <x>>
 func.func private @test_wg1() attributes { wave.constraints = [#wg_constraint1] }
 
 // CHECK: #wave.workgroup_constraint<dim = <"M">, tile_size = [BLOCK_M]
-// CHECK: -> (BLOCK_M floordiv 4), workgroup_dim = 0, iters = [M] -> (M), per_device_dim = <"DEVICE_M">>
+// CHECK: -> (BLOCK_M floordiv 4), workgroup_dim = <x>, iters = [M] -> (M), per_device_dim = <"DEVICE_M">>
 #wg_constraint2 = #wave.workgroup_constraint<dim = <"M">,
                                              tile_size = [BLOCK_M] -> (BLOCK_M floordiv 4),
-                                             workgroup_dim = 0,
+                                             workgroup_dim = <x>,
                                              primary = true,
                                              iters = [M] -> (M),
                                              per_device_dim = <"DEVICE_M">>
@@ -47,7 +47,7 @@ func.func private @test_tiling2() attributes { wave.constraints = [#tl_constrain
 func.func private @test_wave1() attributes { wave.constraints = [#wv_constraint1] }
 
 // CHECK: #wave.wave_constraint<dim = <"K">, tile_size = [BLOCK_K] -> (BLOCK_K floordiv 4), wave_id = [THREAD_0] -> (THREAD_0 floordiv 64),
-// CHECK:   wg_constraint = <dim = <"M">, tile_size = [BLOCK_M] -> (BLOCK_M floordiv 4), workgroup_dim = 0>
+// CHECK:   wg_constraint = <dim = <"M">, tile_size = [BLOCK_M] -> (BLOCK_M floordiv 4), workgroup_dim = <x>>
 #wv_constraint2 = #wave.wave_constraint<dim = <"K">,
                                         tile_size = [BLOCK_K] -> (BLOCK_K floordiv 4),
                                         wave_id = [THREAD_0] -> (THREAD_0 floordiv 64),
@@ -55,10 +55,10 @@ func.func private @test_wave1() attributes { wave.constraints = [#wv_constraint1
 func.func private @test_wave2() attributes { wave.constraints = [#wv_constraint2] }
 
 // CHECK: #wave.reordering_constraint<reordered_equation = [WG0, WG1, M, BLOCK_M, GROUP_SIZE_N]
-// CHECK:   -> (((WG1 * (M ceildiv BLOCK_M) + WG0) mod (GROUP_SIZE_N * (M ceildiv BLOCK_M))) floordiv GROUP_SIZE_N), workgroup_dim = 0>
+// CHECK:   -> (((WG1 * (M ceildiv BLOCK_M) + WG0) mod (GROUP_SIZE_N * (M ceildiv BLOCK_M))) floordiv GROUP_SIZE_N), workgroup_dim = <x>>
 #ro_constraint = #wave.reordering_constraint<reordered_equation = [WG0, WG1, M, BLOCK_M, GROUP_SIZE_N] ->
                                              ((((WG1 * (M ceildiv BLOCK_M) + WG0) mod (GROUP_SIZE_N * (M ceildiv BLOCK_M))) floordiv GROUP_SIZE_N)),
-                                             workgroup_dim = 0>
+                                             workgroup_dim = <x>>
 func.func private @test_reodering() attributes { wave.constraints = [#ro_constraint] }
 
 
