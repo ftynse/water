@@ -126,7 +126,7 @@ def WorkgroupConstraintAttr : AttrDef<WaveDialect, "WorkgroupConstraint"> {
                         "unsigned":$workgroup_dim,
                         DefaultValuedParameter<"bool", "true">:$primary,
                         OptionalParameter<"::wave::WaveExpressionAttr">:$iters,
-                        OptionalParameter<"::wave::WaveExpressionAttr">:$per_device_dim);
+                        OptionalParameter<"::wave::WaveSymbolAttr">:$per_device_dim);
 
   let assemblyFormat = [{
     `<` `dim` `=` $dim
@@ -147,7 +147,7 @@ def TilingConstraintAttr : AttrDef<WaveDialect, "TilingConstraint"> {
     BLOCK_K * i, where i is the induction variable associated with the
     loop around dimension K.
   }];
-  let parameters = (ins "::wave::WaveExpressionAttr":$dim,
+  let parameters = (ins "::wave::WaveSymbolAttr":$dim,
                         OptionalParameter<"::wave::WaveExpressionAttr">:$tile_size,
                         OptionalParameter<"::wave::WaveExpressionAttr">:$induction_var,
                         OptionalParameter<"::wave::WaveExpressionAttr">:$iters,
