@@ -9,26 +9,31 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "water/Dialect/Wave/IR/WaveTypes.h"
 
-mlir::water::WaveTensorTypeConverter::WaveTensorTypeConverter() {
-  addConversion([](wave::WaveTensorType type) -> std::optional<Type> {
-    auto shape = type.getResolvedShape();
-    // Fail if shapes aren't resolved
-    if (shape.empty())
-      return std::nullopt;
-    // Convert WaveTensorInRegister to VectorType, and WaveTensorInMemory to
-    // MemRefType
-    auto addrSpace = type.getAddressSpaceValue();
-    if (addrSpace == wave::WaveAddressSpace::Register)
-      return VectorType::get(shape, type.getElementType());
-    // TODO: add gpu memory space
-    return MemRefType::get(shape, type.getElementType());
-  });
+#include "llvm/Support/Debug.h"
 
-  // Mark all other types as legal
+#define DEBUG_TYPE "wave-tensor-type-converter"
+
+mlir::water::WaveTensorTypeConverter::WaveTensorTypeConverter() {
   addConversion([](Type type) -> std::optional<Type> {
-    if (!isa<wave::WaveTensorType>(type))
-      return type;
-    return std::nullopt;
+    if (auto waveType = dyn_cast<wave::WaveTensorType>(type)) {
+      auto shape = waveType.getResolvedShape();
+      // Fail if shapes aren't resolved
+      if (shape.empty()) {
+        LLVM_DEBUG({
+          llvm::dbgs() << "WaveTensorType conversion failed: symbolic shape unresolved\n";
+        });
+        return std::nullopt;
+      }
+      // Convert WaveTensorInRegister to VectorType, and WaveTensorInMemory to
+      // MemRefType
+      auto addrSpace = waveType.getAddressSpaceValue();
+      if (addrSpace == wave::WaveAddressSpace::Unspecified)
+        return VectorType::get(shape, waveType.getElementType());
+      // TODO: add gpu memory space
+      return MemRefType::get(shape, waveType.getElementType());
+    }
+    // Mark all other types as legal
+    return type;
   });
 
   addSourceMaterialization([](OpBuilder &builder, wave::WaveTensorType waveType,

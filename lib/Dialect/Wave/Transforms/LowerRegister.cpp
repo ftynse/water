@@ -10,12 +10,11 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "water/Dialect/Wave/IR/WaveOps.h"
 
-#define DEBUG_TYPE "wave-register-lowering"
-
 using namespace mlir;
 
 namespace {
 
+/// Lowers `wave.register` into a constant vector to avoid memory allocation.
 class RegisterOpLoweringPattern : public OpConversionPattern<wave::RegisterOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
@@ -28,7 +27,6 @@ public:
       return rewriter.notifyMatchFailure(op,
                                          "WaveTensorType conversion failed");
     }
-    convertedType.dump();
     auto vectorType = dyn_cast<VectorType>(convertedType);
     if (!vectorType) {
       return rewriter.notifyMatchFailure(
@@ -37,7 +35,7 @@ public:
 
     TypedAttr splatAttr;
     Value initValue = op.getInit();
-    auto elementType = vectorType.getElementType();
+    Type elementType = vectorType.getElementType();
 
     if (isa<FloatType>(elementType)) {
       if (auto cst = initValue.getDefiningOp<arith::ConstantFloatOp>()) {

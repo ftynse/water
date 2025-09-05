@@ -9,7 +9,7 @@
 
 include "mlir/Pass/PassBase.td"
 
-def LowerWaveToMLIRPass : Pass<"lower-wave-to-mlir", "mlir::ModuleOp"> {
+def LowerWaveToMLIRPass : Pass<"lower-wave-to-mlir"> {
   let summary = "Lower Wave dialect to upstream MLIR dialects";
   let description = [{
     This pass lowers operations from the Wave dialect to other upstream MLIR

@@ -19,8 +19,7 @@ struct WaveTensorTypeConverter : public TypeConverter {
   WaveTensorTypeConverter();
 };
 
-/// Lowers `wave.register` into a sequence of division and remainder
-/// operations.
+// Adds pattern that lowers `wave.register` to upstream MLIR ops.
 void populateWaveRegisterLoweringPatterns(
     WaveTensorTypeConverter &typeConverter, RewritePatternSet &patterns);
 
