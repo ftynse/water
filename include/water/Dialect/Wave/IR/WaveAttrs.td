@@ -100,7 +100,16 @@ def HardwareConstraintAttr : AttrDef<WaveDialect, "HardwareConstraint"> {
                         OptionalParameter<"WaveMmaKindAttr">:$mma_type,
                         OptionalParameter<"mlir::DictionaryAttr">:$vector_shapes,
                         DefaultValuedParameter<"unsigned", "128">:$max_bits_per_load);
-  let assemblyFormat = "`<` $threads_per_wave `,` $vector_shapes `,` $waves_per_block `,` $max_bits_per_load `>`";
+
+  let assemblyFormat = [{
+    `<` `threads_per_wave` `=` $threads_per_wave
+      `waves_per_block` `=` $waves_per_block
+      (`mma_type` `=` $mma_type^)?
+      (`vector_shapes` `=` $vector_shapes^)?
+      (`max_bits_per_load` `=` $max_bits_per_load^)? `>`
+  }];
+
+  let genVerifyDecl = 1;
 }
 
 def WorkgroupConstraintAttr : AttrDef<WaveDialect, "WorkgroupConstraint"> {
@@ -118,7 +127,15 @@ def WorkgroupConstraintAttr : AttrDef<WaveDialect, "WorkgroupConstraint"> {
                         DefaultValuedParameter<"bool", "true">:$primary,
                         OptionalParameter<"WaveExpressionAttr">:$iters,
                         OptionalParameter<"WaveExpressionAttr">:$per_device_dim);
-  let assemblyFormat = "`<` $dim `,` $tile_size `,` $workgroup_dim `,` $primary `,` $iters `,` $per_device_dim `>`";
+
+  let assemblyFormat = [{
+    `<` `dim` `=` $dim
+      `tile_size` `=` $tile_size
+      `workgroup_dim` `=` $workgroup_dim
+      (`primary` `=` $primary^)?
+      (`iters` `=` $iters^)?
+      (`per_device_dim` `=` $per_device_dim^)? `>`
+  }];
 }
 
 def TilingConstraintAttr : AttrDef<WaveDialect, "TilingConstraint"> {
@@ -135,7 +152,14 @@ def TilingConstraintAttr : AttrDef<WaveDialect, "TilingConstraint"> {
                         OptionalParameter<"WaveExpressionAttr">:$induction_var,
                         OptionalParameter<"WaveExpressionAttr">:$iters,
                         OptionalParameter<"WaveExpressionAttr">:$start);
-  let assemblyFormat = "`<` $dim `,` $tile_size `,` $induction_var `,` $iters `,` $start `>`";
+
+  let assemblyFormat = [{
+    `<` `dim` `=` $dim
+      (`tile_size` `=` $tile_size^)?
+      (`induction_var` `=` $induction_var^)?
+      (`iters` `=` $iters^)?
+      (`start` `=` $start^)? `>`
+  }];
 }
 
 def WaveConstraintAttr : AttrDef<WaveDialect, "WaveConstraint"> {
@@ -169,7 +193,13 @@ def WaveConstraintAttr : AttrDef<WaveDialect, "WaveConstraint"> {
                         "WaveExpressionAttr":$tile_size,
                         OptionalParameter<"WaveExpressionAttr">:$wave_id,
                         OptionalParameter<"WorkgroupConstraintAttr">:$wg_constraint);
-  let assemblyFormat = "`<` $dim `,` $tile_size (`,` $wave_id^)? (`,` $wg_constraint^)? `>`";
+
+  let assemblyFormat = [{
+    `<` `dim` `=` $dim
+      `tile_size` `=` $tile_size
+      (`wave_id` `=` $wave_id^)?
+      (`wg_constraint` `=` $wg_constraint^)? `>`
+  }];
 }
 
 def ReorderingConstraintAttr : AttrDef<WaveDialect, "ReorderingConstraint"> {
@@ -185,7 +215,9 @@ def ReorderingConstraintAttr : AttrDef<WaveDialect, "ReorderingConstraint"> {
   }];
   let parameters = (ins "WaveExpressionAttr":$reordered_equation,
                         "unsigned":$workgroup_dim);
-  let assemblyFormat = "`<` $reordered_equation `,` $workgroup_dim `>`";
+  let assemblyFormat = [{
+    `<` `reordered_equation` `=` $reordered_equation `,` `tile_sworkgroup_dimize` `=` $workgroup_dim `>`
+  }];
 }
 
 def IteratorBindingAttr : AttrDef<WaveDialect, "IteratorBinding"> {
@@ -194,6 +226,7 @@ def IteratorBindingAttr : AttrDef<WaveDialect, "IteratorBinding"> {
   let description = [{TODO}];
   let parameters = (ins OptionalParameter<"mlir::DictionaryAttr">:$binding);
   let assemblyFormat = "`<` $binding `>`";
+  let genVerifyDecl = 1;
 }
 
 def DeviceConstraintAttr : AttrDef<WaveDialect, "DeviceConstraint"> {
@@ -221,7 +254,12 @@ def DeviceConstraintAttr : AttrDef<WaveDialect, "DeviceConstraint"> {
   let parameters = (ins "WaveExpressionAttr":$dim,
                         "WaveExpressionAttr":$tile_size,
                         "unsigned":$device_dim);
-  let assemblyFormat = "`<` $dim `,` $tile_size `,` $device_dim `>`";
+
+  let assemblyFormat = [{
+    `<` `dim` `=` $dim
+      `tile_size` `=` $tile_size
+      `device_dim` `=` $device_dim `>`
+  }];
 }
 
 

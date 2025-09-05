@@ -6,6 +6,7 @@
 
 #include "water/Dialect/Wave/IR/WaveAttrs.h"
 #include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "water/Dialect/Wave/IR/WaveDialect.h"
 
 #include "mlir/IR/Builders.h"
@@ -13,8 +14,8 @@
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/LogicalResult.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include "water/Dialect/Wave/IR/WaveEnums.cpp.inc"
 #define GET_ATTRDEF_CLASSES
@@ -239,6 +240,49 @@ void WaveExpressionAttr::print(AsmPrinter &printer) const {
   std::string str = stringifyWithNames(getMap(), allNames);
 
   printer << "(" << str << ")";
+}
+
+//-----------------------------------------------------------------------------
+// Constraint attributes
+//-----------------------------------------------------------------------------
+
+LogicalResult HardwareConstraintAttr::verify(
+    function_ref<::mlir::InFlightDiagnostic()> emitError,
+    unsigned threadsPerWave, ArrayRef<unsigned> wavesPerBlock,
+    WaveMmaKindAttr mmaType, DictionaryAttr vectorShapes,
+    unsigned maxBitsPerLoad) {
+
+  if (wavesPerBlock.size() != vectorShapes.size())
+    return emitError() << "waves_per_block " << wavesPerBlock
+                       << ") does should have the same size as vector_shapes ("
+                       << vectorShapes << ")";
+
+  for (NamedAttribute attr : vectorShapes) {
+    // TODO: verify that attr.getName() is a valid WaveSymbol
+    Attribute value = attr.getValue();
+
+    if (!isa<IntegerAttr>(value))
+      return emitError() << attr.getName()
+                         << " is not an IntegerAttr: " << attr.getValue();
+  }
+
+  return success();
+}
+
+LogicalResult IteratorBindingAttr::verify(
+    function_ref<::mlir::InFlightDiagnostic()> emitError,
+    DictionaryAttr binding) {
+
+  for (NamedAttribute attr : binding) {
+    // TODO: verify that attr.getName() is a valid WaveSymbol
+
+    auto value = attr.getValue();
+    if (!isa<WaveSymbolAttr>(value))
+      return emitError() << attr.getName()
+                         << " is not a WaveSymbolAttr: " << attr.getValue();
+  }
+
+  return success();
 }
 
 void wave::WaveDialect::registerAttributes() {
