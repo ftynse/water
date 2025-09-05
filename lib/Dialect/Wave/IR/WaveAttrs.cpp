@@ -252,19 +252,20 @@ LogicalResult HardwareConstraintAttr::verify(
     WaveMmaKindAttr mmaType, DictionaryAttr vectorShapes,
     unsigned maxBitsPerLoad) {
 
-  if (wavesPerBlock.size() != vectorShapes.size())
+  if (vectorShapes && wavesPerBlock.size() != vectorShapes.size())
     return emitError() << "waves_per_block " << wavesPerBlock
                        << ") does should have the same size as vector_shapes ("
                        << vectorShapes << ")";
 
-  for (NamedAttribute attr : vectorShapes) {
-    // TODO: verify that attr.getName() is a valid WaveSymbol
-    Attribute value = attr.getValue();
+  if (vectorShapes)
+    for (NamedAttribute attr : vectorShapes) {
+      // TODO: verify that attr.getName() is a valid WaveSymbol
+      Attribute value = attr.getValue();
 
-    if (!isa<IntegerAttr>(value))
-      return emitError() << attr.getName()
-                         << " is not an IntegerAttr: " << attr.getValue();
-  }
+      if (!isa<IntegerAttr>(value))
+        return emitError() << attr.getName()
+                           << " is not an IntegerAttr: " << attr.getValue();
+    }
 
   return success();
 }

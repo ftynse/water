@@ -96,17 +96,17 @@ def HardwareConstraintAttr : AttrDef<WaveDialect, "HardwareConstraint"> {
     the mapping from symbols to shapes should be injective.
   }];
   let parameters = (ins "unsigned":$threads_per_wave,
-                        ArrayRefParameter<"unsigned">:$waves_per_block,
+                        OptionalArrayRefParameter<"unsigned">:$waves_per_block,
                         OptionalParameter<"WaveMmaKindAttr">:$mma_type,
                         OptionalParameter<"mlir::DictionaryAttr">:$vector_shapes,
                         DefaultValuedParameter<"unsigned", "128">:$max_bits_per_load);
 
   let assemblyFormat = [{
     `<` `threads_per_wave` `=` $threads_per_wave
-      `waves_per_block` `=` $waves_per_block
-      (`mma_type` `=` $mma_type^)?
-      (`vector_shapes` `=` $vector_shapes^)?
-      (`max_bits_per_load` `=` $max_bits_per_load^)? `>`
+    (`,` `waves_per_block` `=` `[` $waves_per_block^  `]`)?
+    (`,` `mma_type` `=` $mma_type^)?
+    (`,` `vector_shapes` `=` $vector_shapes^)?
+    (`,` `max_bits_per_load` `=` $max_bits_per_load^)? `>`
   }];
 
   let genVerifyDecl = 1;
@@ -130,11 +130,11 @@ def WorkgroupConstraintAttr : AttrDef<WaveDialect, "WorkgroupConstraint"> {
 
   let assemblyFormat = [{
     `<` `dim` `=` $dim
-      `tile_size` `=` $tile_size
-      `workgroup_dim` `=` $workgroup_dim
-      (`primary` `=` $primary^)?
-      (`iters` `=` $iters^)?
-      (`per_device_dim` `=` $per_device_dim^)? `>`
+    `,` `tile_size` `=` $tile_size
+    `,` `workgroup_dim` `=` $workgroup_dim
+    (`,` `primary` `=` $primary^)?
+    (`,` `iters` `=` $iters^)?
+    (`,` `per_device_dim` `=` $per_device_dim^)? `>`
   }];
 }
 
@@ -155,10 +155,10 @@ def TilingConstraintAttr : AttrDef<WaveDialect, "TilingConstraint"> {
 
   let assemblyFormat = [{
     `<` `dim` `=` $dim
-      (`tile_size` `=` $tile_size^)?
-      (`induction_var` `=` $induction_var^)?
-      (`iters` `=` $iters^)?
-      (`start` `=` $start^)? `>`
+    (`,` `tile_size` `=` $tile_size^)?
+    (`,` `induction_var` `=` $induction_var^)?
+    (`,` `iters` `=` $iters^)?
+    (`,` `start` `=` $start^)? `>`
   }];
 }
 
@@ -196,9 +196,9 @@ def WaveConstraintAttr : AttrDef<WaveDialect, "WaveConstraint"> {
 
   let assemblyFormat = [{
     `<` `dim` `=` $dim
-      `tile_size` `=` $tile_size
-      (`wave_id` `=` $wave_id^)?
-      (`wg_constraint` `=` $wg_constraint^)? `>`
+    `,` `tile_size` `=` $tile_size
+    (`,` `wave_id` `=` $wave_id^)?
+    (`,` `wg_constraint` `=` $wg_constraint^)? `>`
   }];
 }
 
@@ -216,7 +216,7 @@ def ReorderingConstraintAttr : AttrDef<WaveDialect, "ReorderingConstraint"> {
   let parameters = (ins "WaveExpressionAttr":$reordered_equation,
                         "unsigned":$workgroup_dim);
   let assemblyFormat = [{
-    `<` `reordered_equation` `=` $reordered_equation `,` `tile_sworkgroup_dimize` `=` $workgroup_dim `>`
+    `<` `reordered_equation` `=` $reordered_equation `,` `workgroup_dim` `=` $workgroup_dim `>`
   }];
 }
 
@@ -257,8 +257,8 @@ def DeviceConstraintAttr : AttrDef<WaveDialect, "DeviceConstraint"> {
 
   let assemblyFormat = [{
     `<` `dim` `=` $dim
-      `tile_size` `=` $tile_size
-      `device_dim` `=` $device_dim `>`
+    `,` `tile_size` `=` $tile_size
+    `,` `device_dim` `=` $device_dim `>`
   }];
 }
 
