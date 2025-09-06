@@ -126,13 +126,14 @@ def HardwareConstraintAttr : AttrDef<WaveDialect, "HardwareConstraint"> {
                         OptionalParameter<"::mlir::DictionaryAttr">:$vector_shapes,
                         DefaultValuedParameter<"unsigned", "128">:$max_bits_per_load);
 
-  let assemblyFormat = [{
-    `<` `threads_per_wave` `=` $threads_per_wave
-    (`,` `waves_per_block` `=` `[` $waves_per_block^  `]`)?
-    (`,` `mma_type` `=` $mma_type^)?
-    (`,` `vector_shapes` `=` $vector_shapes^)?
-    (`,` `max_bits_per_load` `=` $max_bits_per_load^)? `>`
-  }];
+  let assemblyFormat = "`<` struct($threads_per_wave, custom<IntegerArray>($waves_per_block), $mma_type, $vector_shapes, $max_bits_per_load) `>`";
+  // let assemblyFormat = [{
+  //   `<` `threads_per_wave` `=` $threads_per_wave
+  //   (`,` `waves_per_block` `=` `[` $waves_per_block^  `]`)?
+  //   (`,` `mma_type` `=` $mma_type^)?
+  //   (`,` `vector_shapes` `=` $vector_shapes^)?
+  //   (`,` `max_bits_per_load` `=` $max_bits_per_load^)? `>`
+  // }];
 
   let genVerifyDecl = 1;
 }
@@ -162,14 +163,7 @@ def WorkgroupConstraintAttr : AttrDef<WaveDialect, "WorkgroupConstraint"> {
                         OptionalParameter<"::wave::WaveExpressionAttr">:$iters,
                         OptionalParameter<"::wave::WaveSymbolAttr">:$per_device_dim);
 
-  let assemblyFormat = [{
-    `<` `dim` `=` $dim
-    `,` `tile_size` `=` $tile_size
-    `,` `workgroup_dim` `=` $workgroup_dim
-    (`,` `primary` `=` $primary^)?
-    (`,` `iters` `=` $iters^)?
-    (`,` `per_device_dim` `=` $per_device_dim^)? `>`
-  }];
+  let assemblyFormat = "`<` struct(params) `>`";
 }
 
 def TilingConstraintAttr : AttrDef<WaveDialect, "TilingConstraint"> {
@@ -195,13 +189,7 @@ def TilingConstraintAttr : AttrDef<WaveDialect, "TilingConstraint"> {
                         OptionalParameter<"::wave::WaveExpressionAttr">:$iters,
                         OptionalParameter<"::wave::WaveExpressionAttr">:$start);
 
-  let assemblyFormat = [{
-    `<` `dim` `=` $dim
-    (`,` `tile_size` `=` $tile_size^)?
-    (`,` `induction_var` `=` $induction_var^)?
-    (`,` `iters` `=` $iters^)?
-    (`,` `start` `=` $start^)? `>`
-  }];
+  let assemblyFormat = "`<` struct(params) `>`";
 }
 
 def WaveConstraintAttr : AttrDef<WaveDialect, "WaveConstraint"> {
@@ -243,12 +231,7 @@ def WaveConstraintAttr : AttrDef<WaveDialect, "WaveConstraint"> {
                         OptionalParameter<"::wave::WaveExpressionAttr">:$wave_id,
                         OptionalParameter<"::wave::WorkgroupConstraintAttr">:$wg_constraint);
 
-  let assemblyFormat = [{
-    `<` `dim` `=` $dim
-    `,` `tile_size` `=` $tile_size
-    (`,` `wave_id` `=` $wave_id^)?
-    (`,` `wg_constraint` `=` $wg_constraint^)? `>`
-  }];
+  let assemblyFormat = "`<` struct(params) `>`";
 }
 
 def ReorderingConstraintAttr : AttrDef<WaveDialect, "ReorderingConstraint"> {
@@ -269,9 +252,7 @@ def ReorderingConstraintAttr : AttrDef<WaveDialect, "ReorderingConstraint"> {
   }];
   let parameters = (ins "::wave::WaveExpressionAttr":$reordered_equation,
                         "::wave::WaveWorkgroupDimAttr":$workgroup_dim);
-  let assemblyFormat = [{
-    `<` `reordered_equation` `=` $reordered_equation `,` `workgroup_dim` `=` $workgroup_dim `>`
-  }];
+  let assemblyFormat = "`<` struct(params) `>`";
 }
 
 def IteratorBindingAttr : AttrDef<WaveDialect, "IteratorBinding"> {
@@ -313,11 +294,7 @@ def DeviceConstraintAttr : AttrDef<WaveDialect, "DeviceConstraint"> {
                         "::wave::WaveExpressionAttr":$tile_size,
                         "unsigned":$device_dim);
 
-  let assemblyFormat = [{
-    `<` `dim` `=` $dim
-    `,` `tile_size` `=` $tile_size
-    `,` `device_dim` `=` $device_dim `>`
-  }];
+  let assemblyFormat = "`<` struct(params) `>`";
 }
 
 
