@@ -12,8 +12,8 @@ include "mlir/Pass/PassBase.td"
 def LowerWaveToMLIRPass : Pass<"lower-wave-to-mlir"> {
   let summary = "Lower Wave dialect to upstream MLIR dialects";
   let description = [{
-    This pass lowers operations from the Wave dialect to other upstream MLIR
-    dialects, notable vector/memref.
+    This pass lowers operations from the Wave dialect to upstream MLIR
+    dialects, notably arith and vector.
   }];
   let dependentDialects = [
     "::mlir::arith::ArithDialect",

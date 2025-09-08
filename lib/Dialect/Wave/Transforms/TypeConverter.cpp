@@ -13,6 +13,7 @@
 #include "llvm/Support/Debug.h"
 
 #define DEBUG_TYPE "wave-tensor-type-converter"
+#define DBGS() ::llvm::dbgs() << "[" DEBUG_TYPE "] "
 
 using namespace mlir;
 
@@ -23,8 +24,8 @@ wave::WaveTensorTypeConverter::WaveTensorTypeConverter() {
       // Fail if shapes aren't resolved.
       if (shape.empty()) {
         LLVM_DEBUG({
-          llvm::dbgs() << "WaveTensorType conversion failed: symbolic shape "
-                          "unresolved\n";
+          DBGS() << "WaveTensorType conversion failed: symbolic shape "
+                    "unresolved\n";
         });
         return std::nullopt;
       }
@@ -35,7 +36,8 @@ wave::WaveTensorTypeConverter::WaveTensorTypeConverter() {
 
       switch (addrSpace) {
       case wave::WaveAddressSpace::Unspecified:
-        return VectorType::get(shape, elementType);
+        LLVM_DEBUG(DBGS() << "address spaces must have been specified\n");
+        return std::nullopt;
 
       case wave::WaveAddressSpace::Global: {
         // GPU global memory (device memory)
@@ -58,13 +60,6 @@ wave::WaveTensorTypeConverter::WaveTensorTypeConverter() {
       case wave::WaveAddressSpace::Register:
         // For register space, use vector type (registers are handled by LLVM)
         return VectorType::get(shape, elementType);
-
-      default:
-        LLVM_DEBUG({
-          llvm::dbgs() << "Unknown WaveAddressSpace: "
-                       << static_cast<int>(addrSpace) << "\n";
-        });
-        return std::nullopt;
       }
     }
     // Mark all other types as legal.
