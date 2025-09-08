@@ -56,6 +56,25 @@ def WaveTensorType : TypeDef<WaveDialect, "WaveTensor"> {
       return getShape().size();
     }
 
+    // Return the resolved shape of the fully-specified tensor.
+    llvm::SmallVector<int64_t> getResolvedShape() {
+      // Return empty if not fully specified
+      if (!getFullySpecified()) {
+        return {};
+      }
+
+      // TODO: replace this with a query to resolve the symbols
+      size_t rank = getRank();
+      llvm::SmallVector<int64_t> shape;
+      shape.reserve(rank);
+
+      for (size_t i = 0; i < rank; ++i) {
+        shape.push_back(9);
+      }
+
+      return shape;
+    }
+
     // Return the address space.
     ::wave::WaveAddressSpace getAddressSpaceValue() const {
       return getAddressSpace().getValue();

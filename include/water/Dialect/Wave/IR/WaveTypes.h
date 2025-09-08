@@ -7,6 +7,8 @@
 #ifndef WATER_DIALECT_WAVE_IR_WAVETYPES_H
 #define WATER_DIALECT_WAVE_IR_WAVETYPES_H
 
+#include "llvm/ADT/SmallVector.h"
+
 #include "mlir/IR/Types.h"
 #include "water/Dialect/Wave/IR/WaveAttrs.h"
 

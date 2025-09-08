@@ -24,6 +24,7 @@
 #include "mlir/Transforms/Passes.h"
 
 #include "water/Dialect/Wave/IR/WaveDialect.h"
+#include "water/Dialect/Wave/Transforms/Passes.h"
 #include "water/Tools/water-opt/WaterOptMain.h"
 #include "water/Transforms/Passes.h"
 
@@ -36,6 +37,7 @@ void registerAllPasses();
 int main(int argc, char **argv) {
   mlir::water::registerPasses();
   mlir::water::test::registerAllPasses();
+  wave::registerPasses();
 
   mlir::arith::registerArithIntRangeOptsPass();
   mlir::registerCanonicalizerPass();
