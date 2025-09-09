@@ -14,6 +14,13 @@ mlir_tablegen(WaveDialect.cpp.inc -gen-dialect-defs -dialect=wave)
 add_public_tablegen_target(MLIRWaveDialectIncGen)
 add_dependencies(MLIRWaveIncGen MLIRWaveTypesIncGen)
 
+set(LLVM_TARGET_DEFINITIONS WaveInterfaces.td)
+mlir_tablegen(WaveOpInterfaces.h.inc -gen-op-interface-decls)
+mlir_tablegen(WaveOpInterfaces.cpp.inc -gen-op-interface-defs)
+add_public_tablegen_target(MLIRWaveInterfacesIncGen)
+add_dependencies(MLIRWaveIncGen MLIRWaveInterfacesIncGen)
+add_mlir_doc(WaveInterfaces WaveOpInterfaces Dialects/ -gen-op-interface-docs)
+
 set(LLVM_TARGET_DEFINITIONS WaveOps.td)
 mlir_tablegen(WaveOps.h.inc -gen-op-decls)
 mlir_tablegen(WaveOps.cpp.inc -gen-op-defs)

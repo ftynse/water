@@ -1,4 +1,5 @@
-add_mlir_dialect_library(MLIRLowerWaveTransforms
+add_mlir_dialect_library(MLIRWaveTransforms
+  InferTypes.cpp
   LowerRegister.cpp
   LowerWaveToMLIR.cpp
   TypeConverter.cpp
@@ -7,7 +8,7 @@ add_mlir_dialect_library(MLIRLowerWaveTransforms
   ${PROJECT_SOURCE_DIR}/include/water/
 
   DEPENDS
-  MLIRLowerWavePassesIncGen
+  MLIRWaterWavePassesIncGen
 
   LINK_LIBS PUBLIC
   MLIRArithDialect

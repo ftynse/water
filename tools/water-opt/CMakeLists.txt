@@ -4,10 +4,12 @@ set(LIBS
         ${dialect_libs}
         ${conversion_libs}
         MLIRArithDialect
-        MLIRLowerWaveTransforms
         MLIROptLib
         MLIRWaterTransforms
+        MLIRWaveTransforms
+
         MLIRWaterTestTransforms
+        MLIRWaterTestDialect
 )
 
 add_llvm_executable(water-opt

@@ -32,13 +32,13 @@
 // headers.
 namespace mlir::water::test {
 void registerAllPasses();
+void registerWaterTestDialect(DialectRegistry &registry);
 } // namespace mlir::water::test
 
 int main(int argc, char **argv) {
   mlir::water::registerPasses();
   mlir::water::test::registerAllPasses();
   wave::registerPasses();
-
   mlir::arith::registerArithIntRangeOptsPass();
   mlir::registerCanonicalizerPass();
   mlir::registerCSEPass();
@@ -52,6 +52,8 @@ int main(int argc, char **argv) {
                   mlir::LLVM::LLVMDialect, mlir::memref::MemRefDialect,
                   mlir::scf::SCFDialect, mlir::vector::VectorDialect,
                   wave::WaveDialect>();
+
+  mlir::water::test::registerWaterTestDialect(registry);
 
   return mlir::asMainReturnCode(
       WaterOptMain(argc, argv, "water optimizer driver\n", registry));
