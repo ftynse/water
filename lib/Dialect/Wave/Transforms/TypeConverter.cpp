@@ -17,10 +17,49 @@
 
 using namespace mlir;
 
+namespace {
+
+std::optional<Operation *> walkUpToFunction(Operation *op) {
+  while (op) {
+    if (isa<FunctionOpInterface>(op))
+      return op;
+    op = op->getParentOp();
+  }
+  return std::nullopt;
+}
+
+std::optional<Operation *> getEnclosingFunction(Value v) {
+  if (auto *definingOp = v.getDefiningOp())
+    return walkUpToFunction(definingOp);
+
+  if (auto blockArg = dyn_cast<BlockArgument>(v)) {
+    auto *block = blockArg.getOwner();
+    auto *region = block->getParent();
+    if (!region)
+      return std::nullopt;
+
+    return walkUpToFunction(region->getParentOp());
+  }
+  return std::nullopt;
+}
+
+} // namespace
 wave::WaveTensorTypeConverter::WaveTensorTypeConverter() {
-  addConversion([](Type type) -> std::optional<Type> {
+  addConversion([](Value v) -> std::optional<Type> {
+    Type type = v.getType();
+    auto maybeFuncOp = getEnclosingFunction(v);
+    if (!maybeFuncOp) {
+      return std::nullopt;
+    }
+    auto hyperparameterAttr =
+        (*maybeFuncOp)
+            ->getAttrOfType<WaveHyperparameterAttr>("hyperparameters");
+    if (!hyperparameterAttr)
+      return std::nullopt;
+
     if (auto waveType = dyn_cast<wave::WaveTensorType>(type)) {
-      auto shape = waveType.getResolvedShape();
+      llvm::SmallVector<int64_t> shape =
+          waveType.getResolvedShape(hyperparameterAttr);
       // Fail if shapes aren't resolved.
       if (shape.empty()) {
         LLVM_DEBUG({

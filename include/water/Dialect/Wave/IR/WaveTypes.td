@@ -57,22 +57,24 @@ def WaveTensorType : TypeDef<WaveDialect, "WaveTensor"> {
     }
 
     // Return the resolved shape of the fully-specified tensor.
-    llvm::SmallVector<int64_t> getResolvedShape() {
+    llvm::SmallVector<int64_t> getResolvedShape(wave::WaveHyperparameterAttr hyperparameter) {
       // Return empty if not fully specified
       if (!getFullySpecified()) {
         return {};
       }
 
       // TODO: replace this with a query to resolve the symbols
-      size_t rank = getRank();
-      llvm::SmallVector<int64_t> shape;
-      shape.reserve(rank);
+      llvm::ArrayRef<wave::WaveSymbolAttr> symbols = getShape();
+      llvm::SmallVector<int64_t> resolvedShape;
 
-      for (size_t i = 0; i < rank; ++i) {
-        shape.push_back(9);
+      mlir::DictionaryAttr mapping = hyperparameter.getMapping();
+      for (auto symbol : symbols) {
+        assert(hyperparameter.hasSymbol(symbol.getName()) && "unresolved symbol");
+        auto concreteShape = llvm::cast<mlir::IntegerAttr>(mapping.get(symbol.getName()));
+        resolvedShape.push_back(concreteShape.getInt());
       }
 
-      return shape;
+      return resolvedShape;
     }
 
     // Return the address space.

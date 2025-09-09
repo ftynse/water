@@ -22,7 +22,7 @@ public:
   LogicalResult
   matchAndRewrite(wave::RegisterOp op, wave::RegisterOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    Type convertedType = getTypeConverter()->convertType(op.getType());
+    Type convertedType = getTypeConverter()->convertType(op);
     if (!convertedType) {
       return rewriter.notifyMatchFailure(op,
                                          "WaveTensorType conversion failed");
