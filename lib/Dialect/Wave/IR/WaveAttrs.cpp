@@ -144,8 +144,8 @@ void WaveIndexMappingAttr::print(AsmPrinter &printer) const {
 
 std::optional<int64_t>
 WaveHyperparameterAttr::getSymbolValue(StringRef symbolName) const {
-  auto mapping = getMapping();
-  auto attr = mapping.get(symbolName);
+  DictionaryAttr mapping = getMapping();
+  Attribute attr = mapping.get(symbolName);
   if (!attr)
     return std::nullopt;
 
