@@ -138,6 +138,27 @@ void WaveIndexMappingAttr::print(AsmPrinter &printer) const {
   printer << "(" << startStr << ", " << stepStr << ", " << strideStr << ")";
 }
 
+//===----------------------------------------------------------------------===//
+// WaveHyperparameterAttr
+//===----------------------------------------------------------------------===//
+
+std::optional<int64_t>
+WaveHyperparameterAttr::getSymbolValue(StringRef symbolName) const {
+  DictionaryAttr mapping = getMapping();
+  Attribute attr = mapping.get(symbolName);
+  if (!attr)
+    return std::nullopt;
+
+  if (auto intAttr = dyn_cast<IntegerAttr>(attr))
+    return intAttr.getInt();
+
+  return std::nullopt;
+}
+
+bool WaveHyperparameterAttr::hasSymbol(StringRef symbolName) const {
+  return getMapping().get(symbolName) != nullptr;
+}
+
 void wave::WaveDialect::registerAttributes() {
   addAttributes<
 #define GET_ATTRDEF_LIST

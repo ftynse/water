@@ -139,4 +139,32 @@ def WaveIndexMappingAttr : AttrDef<WaveDialect, "WaveIndexMapping"> {
   }];
 }
 
+def WaveHyperparameterAttr : AttrDef<WaveDialect, "WaveHyperparameter"> {
+  let mnemonic = "hyperparameters";
+  let description = [{
+    This attribute contains a dictionary mapping from symbol parameters (strings)
+    to their concrete integer values. It is used to resolve symbolic shapes
+    in wave.tensor types when converting to memref or vector types.
+
+    Example:
+    ```
+    #wave.hyperparameters<{B = 64, H = 128, W = 256}>
+    ```
+  }];
+
+  let parameters = (ins "::mlir::DictionaryAttr":$mapping);
+  let assemblyFormat = "`<` $mapping `>`";
+
+  let extraClassDeclaration = [{
+    /// Get the concrete value for a symbol name, returns std::nullopt if not found
+    std::optional<int64_t> getSymbolValue(::llvm::StringRef symbolName) const;
+
+    /// Check if a symbol exists in the mapping
+    bool hasSymbol(::llvm::StringRef symbolName) const;
+
+    /// Get the number of symbols in the mapping
+    size_t getNumSymbols() const { return getMapping().size(); }
+  }];
+}
+
 #endif // WATER_DIALECT_WAVE_WAVEATTRS

@@ -109,3 +109,14 @@ func.func @register_with_symbols_empty_symbol_list() {
     : !wave.tensor<[@B] of f32, <register>>
   return
 }
+
+
+// CHECK-LABEL: @register_with_hyperparameter
+// CHECK-SAME:  wave.hyperparameters<{A = 100 : i64, B = 10 : i64}>
+func.func @register_with_hyperparameter() attributes {hyperparameters = #wave.hyperparameters<{A = 100, B = 10}>} {
+  %0 = arith.constant 0.0 : f32
+  // CHECK: wave.register
+  %register = wave.register %0
+    : !wave.tensor<[@A, @B] of f32, <register>>
+  return
+}
