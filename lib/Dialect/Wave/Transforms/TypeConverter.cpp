@@ -8,6 +8,7 @@
 
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "water/Dialect/Wave/IR/WaveDialect.h"
 #include "water/Dialect/Wave/IR/WaveTypes.h"
 
 #include "llvm/Support/Debug.h"
@@ -17,12 +18,37 @@
 
 using namespace mlir;
 
+/// Gets the nearest enclosing function operation for a given SSA value.
+static Operation *getEnclosingFunction(Value v) {
+  if (Operation *definingOp = v.getDefiningOp())
+    return definingOp->getParentOfType<FunctionOpInterface>();
+
+  auto blockArg = cast<BlockArgument>(v);
+  Block *block = blockArg.getOwner();
+  Region *region = block->getParent();
+  if (!region)
+    return nullptr;
+
+  return region->getParentOp()->getParentOfType<FunctionOpInterface>();
+}
+
 wave::WaveTensorTypeConverter::WaveTensorTypeConverter() {
-  addConversion([](Type type) -> std::optional<Type> {
+  addConversion([](Value v) -> std::optional<Type> {
+    Type type = v.getType();
+    Operation *funcOp = getEnclosingFunction(v);
+    if (!funcOp) {
+      return std::nullopt;
+    }
+    auto hyperparameterAttr = funcOp->getAttrOfType<WaveHyperparameterAttr>(
+        WaveDialect::kHyperparameterAttrName);
+    if (!hyperparameterAttr)
+      return std::nullopt;
+
     if (auto waveType = dyn_cast<wave::WaveTensorType>(type)) {
-      auto shape = waveType.getResolvedShape();
+      std::optional<llvm::SmallVector<int64_t>> shape =
+          waveType.getResolvedShape(hyperparameterAttr);
       // Fail if shapes aren't resolved.
-      if (shape.empty()) {
+      if (shape == std::nullopt) {
         LLVM_DEBUG({
           DBGS() << "WaveTensorType conversion failed: symbolic shape "
                     "unresolved\n";
@@ -43,7 +69,7 @@ wave::WaveTensorTypeConverter::WaveTensorTypeConverter() {
         // GPU global memory (device memory)
         auto globalMemoryAddressSpace = gpu::AddressSpaceAttr::get(
             elementType.getContext(), gpu::AddressSpace::Global);
-        return MemRefType::get(shape, elementType,
+        return MemRefType::get(*shape, elementType,
                                /*layout=*/MemRefLayoutAttrInterface{},
                                Attribute(globalMemoryAddressSpace));
       }
@@ -52,14 +78,14 @@ wave::WaveTensorTypeConverter::WaveTensorTypeConverter() {
         // GPU shared memory
         auto workgroupMemoryAddressSpace = gpu::AddressSpaceAttr::get(
             elementType.getContext(), gpu::AddressSpace::Workgroup);
-        return MemRefType::get(shape, elementType,
+        return MemRefType::get(*shape, elementType,
                                /*layout=*/MemRefLayoutAttrInterface{},
                                Attribute(workgroupMemoryAddressSpace));
       }
 
       case wave::WaveAddressSpace::Register:
         // For register space, use vector type (registers are handled by LLVM)
-        return VectorType::get(shape, elementType);
+        return VectorType::get(*shape, elementType);
       }
     }
     // Mark all other types as legal.
