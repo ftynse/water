@@ -68,6 +68,37 @@ static void printSingleSymbol(mlir::OpAsmPrinter &printer, mlir::Operation *,
   printer.printSymbolName(symbolAttr.getName());
 }
 
+static mlir::ParseResult parseSymbolList(mlir::OpAsmParser &parser,
+                                         mlir::ArrayAttr &arrayAttr) {
+  llvm::SmallVector<mlir::Attribute> elems;
+
+  auto parseOne = [&]() -> mlir::ParseResult {
+    wave::WaveSymbolAttr sym;
+    if (mlir::failed(parseSingleSymbol(parser, sym)))
+      return mlir::failure();
+    elems.push_back(sym);
+    return mlir::success();
+  };
+
+  if (mlir::failed(parser.parseCommaSeparatedList(
+          mlir::AsmParser::Delimiter::Square, parseOne)))
+    return mlir::failure();
+
+  arrayAttr = mlir::ArrayAttr::get(parser.getContext(), elems);
+  return mlir::success();
+}
+
+static void printSymbolList(mlir::OpAsmPrinter &printer, mlir::Operation *,
+                            mlir::ArrayAttr arrayAttr) {
+  printer << "[";
+  llvm::interleaveComma(arrayAttr, printer.getStream(),
+                        [&](mlir::Attribute sym) {
+                          auto symbol = mlir::cast<wave::WaveSymbolAttr>(sym);
+                          printSingleSymbol(printer, nullptr, symbol);
+                        });
+  printer << "]";
+}
+
 using namespace mlir;
 using namespace wave;
 
@@ -425,4 +456,28 @@ mlir::LogicalResult wave::RegisterOp::verify() {
 mlir::MutableOperandRange
 wave::YieldOp::getMutableSuccessorOperands(mlir::RegionBranchPoint) {
   return getValuesMutable();
+}
+
+//-----------------------------------------------------------------------------
+// AllocateOp
+//-----------------------------------------------------------------------------
+mlir::LogicalResult wave::AllocateOp::verify() {
+  mlir::ArrayAttr arr = getDistributedShape();
+  if (!arr)
+    return emitOpError() << "missing 'distributed_shape'";
+
+  auto resultType = llvm::cast<wave::WaveTensorType>(getResult().getType());
+  if (resultType.getFullySpecified()) {
+    unsigned rank = resultType.getRank();
+    if (arr.size() != rank)
+      return emitOpError() << "'distributed_shape' has length " << arr.size()
+                           << " but tensor rank is " << rank;
+  }
+  for (mlir::Attribute a : arr) {
+    if (!llvm::isa<wave::WaveSymbolAttr>(a))
+      return emitOpError()
+             << "'distributed_shape' elements must be #wave.symbol<...>, got "
+             << a;
+  }
+  return mlir::success();
 }

@@ -249,5 +249,22 @@ def WriteOp : WaveOp<"write", [
     "type($value_to_store) `,` type($memory)";
 }
 
+def AllocateOp : WaveOp<"allocate"> {
+  let summary = "Represents an allocation in an address space";
+  let description = [{
+    Allocates buffers with logical shape/type taken from the result
+    type and with a separate distributed shape controlling the physical layout.
+  }];
+  // TODO: add padding/tail_padding arguments and and reflect them in distributed_shape computation
+  let arguments = !con((ins
+    Arg<ArrayAttr, "Size of the distributed shape">:$distributed_shape),
+   commonArguments);
+
+  let results = (outs WaveTensorType:$result);
+
+  let assemblyFormat = "`distributed_shape` `=` custom<SymbolList>($distributed_shape) attr-dict `:` type($result)";
+
+  let hasVerifier = 1;
+}
 
 #endif // WATER_DIALECT_WAVE_WAVEOPS

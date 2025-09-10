@@ -13,9 +13,10 @@ repos:
     hooks:
     - id: clang-format
   - repo: https://github.com/markdownlint/markdownlint
-    rev: v0.13.0
+    rev: v0.12.0        # ← compatible with Ruby 2.6
     hooks:
     - id: markdownlint
+      language_version: system   # use system Ruby (2.6)
   - repo: local
     hooks:
     - id: signed-off-by
