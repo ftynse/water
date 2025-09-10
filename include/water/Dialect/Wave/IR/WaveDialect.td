@@ -17,6 +17,9 @@ def WaveDialect : Dialect {
   let useDefaultTypePrinterParser = 1;
 
   let extraClassDeclaration = [{
+    // The name of a hyperparameter attribute.
+    static constexpr llvm::StringRef kHyperparameterAttrName =
+        "wave.hyperparameters";
     // Registration functions. The bodies of these must be placed in the file
     // containing private implementations of attributes and types, respectively.
     void registerAttributes();

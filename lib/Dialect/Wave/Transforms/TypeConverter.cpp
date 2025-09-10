@@ -8,6 +8,7 @@
 
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "water/Dialect/Wave/IR/WaveDialect.h"
 #include "water/Dialect/Wave/IR/WaveTypes.h"
 
 #include "llvm/Support/Debug.h"
@@ -19,12 +20,12 @@ using namespace mlir;
 
 /// Gets the nearest enclosing function operation for a given SSA value.
 static Operation *getEnclosingFunction(Value v) {
-  if (auto *definingOp = v.getDefiningOp())
+  if (Operation *definingOp = v.getDefiningOp())
     return definingOp->getParentOfType<FunctionOpInterface>();
 
   auto blockArg = cast<BlockArgument>(v);
-  auto *block = blockArg.getOwner();
-  auto *region = block->getParent();
+  Block *block = blockArg.getOwner();
+  Region *region = block->getParent();
   if (!region)
     return nullptr;
 
@@ -38,8 +39,8 @@ wave::WaveTensorTypeConverter::WaveTensorTypeConverter() {
     if (!funcOp) {
       return std::nullopt;
     }
-    auto hyperparameterAttr =
-        funcOp->getAttrOfType<WaveHyperparameterAttr>("hyperparameters");
+    auto hyperparameterAttr = funcOp->getAttrOfType<WaveHyperparameterAttr>(
+        WaveDialect::kHyperparameterAttrName);
     if (!hyperparameterAttr)
       return std::nullopt;
 
