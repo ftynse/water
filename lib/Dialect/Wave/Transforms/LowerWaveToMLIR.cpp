@@ -38,7 +38,10 @@ struct LowerWaveToMLIRPass
     RewritePatternSet patterns(ctx);
     wave::populateWaveRegisterLoweringPatterns(typeConverter, patterns);
 
-    if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
+    ConversionConfig config;
+    config.allowPatternRollback = false;
+    if (failed(
+            applyPartialConversion(op, target, std::move(patterns), config))) {
       signalPassFailure();
     }
   }
