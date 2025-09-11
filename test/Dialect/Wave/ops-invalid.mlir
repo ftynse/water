@@ -108,3 +108,33 @@ func.func @index_attr_not_dict(%arg0: f32) {
   "wave.register"(%arg0) { index = 42 } : (f32) -> !wave.tensor<[@M] of f32, <register>>
   return
 }
+
+// -----
+
+func.func @mismatch_shape_binary(%lhs: !wave.tensor<[@A, @B] of f32>, %rhs: !wave.tensor<[@B, @C] of f32>) {
+  // expected-error @below {{expected operand #1 dimension #0 (#wave.symbol<"B">) to match operand #0 dimension #0 (#wave.symbol<"A">)}}
+  wave.add %lhs, %rhs : (!wave.tensor<[@A, @B] of f32>, !wave.tensor<[@B, @C] of f32>) -> !wave.tensor<any of f32>
+}
+
+// -----
+
+func.func @mismatch_shape_unary(%lhs: !wave.tensor<[@A, @B] of f32>) {
+  // expected-error @below {{expected result #0 dimension #0 (#wave.symbol<"B">) to match operand #0 dimension #0 (#wave.symbol<"A">)}}
+  wave.exp2 %lhs : (!wave.tensor<[@A, @B] of f32>) -> !wave.tensor<[@B, @C] of f32>
+  return
+}
+
+// -----
+
+func.func @mismatch_shape_read(%lhs: !wave.tensor<[@A, @B] of f32, <global>>) {
+  // expected-error @below {{expected result #0 dimension #0 (#wave.symbol<"B">) to match operand #0 dimension #0 (#wave.symbol<"A">)}}
+  wave.read %lhs : (!wave.tensor<[@A, @B] of f32, <global>>) -> !wave.tensor<[@B, @C] of f32, <register>>
+  return
+}
+
+// -----
+
+func.func @mismatch_shape_write(%lhs: !wave.tensor<[@A, @B] of f32, <register>>, %rhs: !wave.tensor<[@B, @C] of f32, <global>>) {
+  // expected-error @below {{expected operand #1 dimension #0 (#wave.symbol<"B">) to match operand #0 dimension #0 (#wave.symbol<"A">)}}
+  wave.write %lhs, %rhs : !wave.tensor<[@A, @B] of f32, <register>>, !wave.tensor<[@B, @C] of f32, <global>>
+}
