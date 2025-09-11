@@ -513,26 +513,17 @@ llvm::LogicalResult wave::AddrSpaceCastOp::inferReturnTypes(
     mlir::OpaqueProperties properties, mlir::RegionRange regions,
     llvm::SmallVectorImpl<::mlir::Type> &inferredReturnTypes) {
 
-  wave::AddrSpaceCastOp::Adaptor ad(operands, attributes);
-
-  auto srcVal = ad.getSource();
-  if (!srcVal)
-    return ::mlir::emitOptionalError(location, " missing 'source' operand");
-
-  auto srcTy = ::llvm::dyn_cast<wave::WaveTensorType>(srcVal.getType());
+  auto srcTy = llvm::dyn_cast<wave::WaveTensorType>(operands.front().getType());
   if (!srcTy)
-    return ::mlir::emitOptionalError(location,
-                                     " 'source' must be !wave.tensor");
-
-  auto targetASAttr = ad.getTargetAttr();
-  if (!targetASAttr)
-    return ::mlir::emitOptionalError(location,
-                                     " missing 'target' address space");
-
+    return failure();
+  wave::WaveAddressSpaceAttr targetAttr = nullptr;
+  auto *prop = properties.as<AddrSpaceCastOp::Properties *>();
+  targetAttr = prop->target;
+  if (!targetAttr)
+    return failure();
   auto dstTy = wave::WaveTensorType::get(context, srcTy.getShape(),
                                          srcTy.getFullySpecified(),
-                                         srcTy.getElementType(), targetASAttr);
-
+                                         srcTy.getElementType(), targetAttr);
   inferredReturnTypes.push_back(dstTy);
   return ::mlir::success();
 }
