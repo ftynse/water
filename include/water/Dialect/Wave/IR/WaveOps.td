@@ -13,6 +13,8 @@ include "water/Dialect/Wave/IR/WaveInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/IR/CommonAttrConstraints.td"
 include "mlir/IR/BuiltinAttributeInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
+
 
 #ifndef WATER_DIALECT_WAVE_WAVEOPS
 #define WATER_DIALECT_WAVE_WAVEOPS
@@ -260,9 +262,35 @@ def AllocateOp : WaveOp<"allocate"> {
     Arg<ArrayAttr, "Size of the distributed shape">:$distributed_shape),
    commonArguments);
 
-  let results = (outs WaveTensorType:$result);
+  let results = (outs Res<WaveTensorType,"Allocated buffer">:$result
+  );
 
   let assemblyFormat = "`distributed_shape` `=` custom<SymbolList>($distributed_shape) attr-dict `:` type($result)";
+
+  let hasVerifier = 1;
+}
+
+
+def AddrSpaceCastOp : WaveOp<"addrspace_cast",[DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "Casts a handle with type wavetensortype to another address space";
+  let description = [{
+    Produces a new SSA handle to the same logical tensor but with a different
+    address space attribute. The shape and element type must be identical
+    between source and result, only the address space may change.
+
+    This is used by the promotion passes for instance to obtain a <global>-typed handle
+    for seeding a newly allocated <shared> buffer (global → register → LDS).
+  }];
+
+  let arguments = !con((ins
+    Arg<WaveTensorType, "Source handle to cast">:$source,
+    Arg<WaveAddressSpaceAttr,"Address space to target">:$target), commonArguments);
+
+  let results = (outs
+    Res<WaveTensorType, "Result handle in the target address space">:$results
+  );
+
+  let assemblyFormat = "$source  " # commonArgumentsSyntax # "attr-dict `:`  functional-type(operands, results)";
 
   let hasVerifier = 1;
 }

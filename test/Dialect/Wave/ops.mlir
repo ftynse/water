@@ -117,3 +117,10 @@ func.func @allocate() -> !wave.tensor<[@M, @K] of bf16, <shared>> {
 %0 = wave.allocate distributed_shape = [@BLOCK_M, @BLOCK_K] : !wave.tensor<[@M, @K] of bf16, <shared>>
 return %0 : !wave.tensor<[@M, @K] of bf16, <shared>>
 }
+
+// CHECK-LABEL: @addrspace_cast
+func.func @addrspace_cast(%a: !wave.tensor<[@M, @K] of bf16, <shared>>)-> !wave.tensor<[@M, @K] of bf16, <global>> {
+  // CHECK: wave.addrspace_cast
+  %0 = wave.addrspace_cast %a {target =  #wave.address_space<global>} : (!wave.tensor<[@M, @K] of bf16, <shared>>) -> !wave.tensor<[@M, @K] of bf16, <global>>
+  return %0 : !wave.tensor<[@M, @K] of bf16, <global>>
+}

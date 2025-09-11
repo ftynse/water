@@ -481,3 +481,58 @@ mlir::LogicalResult wave::AllocateOp::verify() {
   }
   return mlir::success();
 }
+
+//-----------------------------------------------------------------------------
+// Addrspace_castOp
+//-----------------------------------------------------------------------------
+
+mlir::LogicalResult wave::AddrSpaceCastOp::verify() {
+  auto srcTy = llvm::cast<wave::WaveTensorType>(getSource().getType());
+  auto dstTy = llvm::cast<wave::WaveTensorType>(getResult().getType());
+  if (!srcTy || !dstTy)
+    return emitOpError() << "expected WaveTensorType for source and result";
+
+  if (srcTy.getElementType() != dstTy.getElementType())
+    return emitOpError() << "element types must match";
+  if (srcTy.getShape().size() != dstTy.getShape().size())
+    return emitOpError() << "rank mismatch";
+  for (auto [s, d] : llvm::zip(srcTy.getShape(), dstTy.getShape()))
+    if (s != d)
+      return emitOpError() << "shape symbols must match";
+
+  auto targetAS = getTargetAttr();
+  if (dstTy.getAddressSpace() != targetAS)
+    return emitOpError() << "result address space must equal 'target'";
+
+  return mlir::success();
+}
+
+llvm::LogicalResult wave::AddrSpaceCastOp::inferReturnTypes(
+    mlir::MLIRContext *context, std::optional<::mlir::Location> location,
+    mlir::ValueRange operands, mlir::DictionaryAttr attributes,
+    mlir::OpaqueProperties properties, mlir::RegionRange regions,
+    llvm::SmallVectorImpl<::mlir::Type> &inferredReturnTypes) {
+
+  wave::AddrSpaceCastOp::Adaptor ad(operands, attributes);
+
+  auto srcVal = ad.getSource();
+  if (!srcVal)
+    return ::mlir::emitOptionalError(location, " missing 'source' operand");
+
+  auto srcTy = ::llvm::dyn_cast<wave::WaveTensorType>(srcVal.getType());
+  if (!srcTy)
+    return ::mlir::emitOptionalError(location,
+                                     " 'source' must be !wave.tensor");
+
+  auto targetASAttr = ad.getTargetAttr();
+  if (!targetASAttr)
+    return ::mlir::emitOptionalError(location,
+                                     " missing 'target' address space");
+
+  auto dstTy = wave::WaveTensorType::get(context, srcTy.getShape(),
+                                         srcTy.getFullySpecified(),
+                                         srcTy.getElementType(), targetASAttr);
+
+  inferredReturnTypes.push_back(dstTy);
+  return ::mlir::success();
+}
