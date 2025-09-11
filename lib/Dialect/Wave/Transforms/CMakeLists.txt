@@ -1,5 +1,6 @@
 add_mlir_dialect_library(MLIRWaveTransforms
   InferTypes.cpp
+  LowerBinaryOps.cpp
   LowerRegister.cpp
   LowerWaveToMLIR.cpp
   TypeConverter.cpp

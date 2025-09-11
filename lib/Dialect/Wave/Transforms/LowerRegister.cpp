@@ -51,7 +51,7 @@ public:
               op, "only signless integer types are supported");
         }
         APInt valueInt(elementType.getIntOrFloatBitWidth(), cst.value(),
-                       /*isSigned=*/false);
+                       /*isSigned=*/true);
         splatAttr = DenseIntElementsAttr::get(vectorType, valueInt);
       } else {
         return rewriter.notifyMatchFailure(
