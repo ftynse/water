@@ -9,6 +9,9 @@ func.func @lower_register() attributes {wave.hyperparameters = #wave.hyperparame
   %cst1 = arith.constant 1.0 : f32
   // CHECK:     arith.constant dense<1.000000e+00> : vector<10x1x100xf32>
   wave.register %cst1 : !wave.tensor<[@Y, @Z, @X] of f32, <register>>
+  %cst2 = arith.constant 2 : i32
+  // CHECK:     arith.constant dense<2> : vector<10x1x100xi32>
+  wave.register %cst2 : !wave.tensor<[@Y, @Z, @X] of i32, <register>>
   return
 }
 
