@@ -46,7 +46,9 @@ public:
       }
     } else if (auto intType = dyn_cast<IntegerType>(elementType)) {
       if (auto cst = initValue.getDefiningOp<arith::ConstantIntOp>()) {
-        splatAttr = DenseIntElementsAttr::get(vectorType, cst.value());
+        APInt valueInt(elementType.getIntOrFloatBitWidth(), cst.value(),
+                       /*isSigned=*/!intType.isUnsigned());
+        splatAttr = DenseIntElementsAttr::get(vectorType, valueInt);
       } else {
         return rewriter.notifyMatchFailure(
             op, "init value must be constant integer");
