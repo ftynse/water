@@ -37,6 +37,7 @@ struct LowerWaveToMLIRPass
 
     RewritePatternSet patterns(ctx);
     wave::populateWaveRegisterLoweringPatterns(typeConverter, patterns);
+    wave::populateWaveBinaryOpLoweringPatterns(typeConverter, patterns);
 
     ConversionConfig config;
     config.allowPatternRollback = false;
