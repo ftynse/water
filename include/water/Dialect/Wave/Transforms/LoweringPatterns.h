@@ -20,6 +20,10 @@ struct WaveTensorTypeConverter : public mlir::TypeConverter {
 void populateWaveRegisterLoweringPatterns(
     WaveTensorTypeConverter &typeConverter, mlir::RewritePatternSet &patterns);
 
+// Adds pattern that lowers wave binary ops to upstream MLIR ops.
+void populateWaveBinaryOpLoweringPatterns(
+    WaveTensorTypeConverter &typeConverter, mlir::RewritePatternSet &patterns);
+
 } // namespace wave
 
 #endif // WATER_DIALECT_WAVE_TRANSFORMS_TRANSFORMS_H
