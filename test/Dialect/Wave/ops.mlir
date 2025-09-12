@@ -120,3 +120,10 @@ func.func @register_with_hyperparameter() attributes {hyperparameters = #wave.hy
     : !wave.tensor<[@A, @B] of f32, <register>>
   return
 }
+
+// CHECK-LABEL: @allocate
+func.func @allocate() -> !wave.tensor<[@BLOCK_M, @BLOCK_K] of bf16, <shared>> {
+// CHECK: wave.allocate
+%0 = wave.allocate logical = !wave.tensor<[@M, @K] of bf16, <shared>>, distributed= [@BLOCK_M, @BLOCK_K] : () -> !wave.tensor<[@BLOCK_M, @BLOCK_K] of bf16, <shared>>
+return %0 : !wave.tensor<[@BLOCK_M, @BLOCK_K] of bf16, <shared>>
+}

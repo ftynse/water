@@ -68,6 +68,37 @@ static void printSingleSymbol(mlir::OpAsmPrinter &printer, mlir::Operation *,
   printer.printSymbolName(symbolAttr.getName());
 }
 
+static mlir::ParseResult parseSymbolList(mlir::OpAsmParser &parser,
+                                         mlir::ArrayAttr &arrayAttr) {
+  llvm::SmallVector<mlir::Attribute> elems;
+
+  auto parseOne = [&]() -> mlir::ParseResult {
+    wave::WaveSymbolAttr sym;
+    if (mlir::failed(parseSingleSymbol(parser, sym)))
+      return mlir::failure();
+    elems.push_back(sym);
+    return mlir::success();
+  };
+
+  if (mlir::failed(parser.parseCommaSeparatedList(
+          mlir::AsmParser::Delimiter::Square, parseOne)))
+    return mlir::failure();
+
+  arrayAttr = mlir::ArrayAttr::get(parser.getContext(), elems);
+  return mlir::success();
+}
+
+static void printSymbolList(mlir::OpAsmPrinter &printer, mlir::Operation *,
+                            mlir::ArrayAttr arrayAttr) {
+  printer << "[";
+  llvm::interleaveComma(arrayAttr, printer.getStream(),
+                        [&](mlir::Attribute sym) {
+                          auto symbol = mlir::cast<wave::WaveSymbolAttr>(sym);
+                          printSingleSymbol(printer, nullptr, symbol);
+                        });
+  printer << "]";
+}
+
 using namespace mlir;
 using namespace wave;
 
@@ -301,4 +332,61 @@ mlir::LogicalResult wave::RegisterOp::verify() {
 mlir::MutableOperandRange
 wave::YieldOp::getMutableSuccessorOperands(mlir::RegionBranchPoint) {
   return getValuesMutable();
+}
+
+//-----------------------------------------------------------------------------
+// AllocateOp
+//-----------------------------------------------------------------------------
+mlir::LogicalResult wave::AllocateOp::verify() {
+  mlir::ArrayAttr distr = getDistributedShape();
+  if (!distr)
+    return emitOpError() << "missing 'distributed_shape' attribute";
+
+  mlir::TypeAttr logicalTA = getLogicalTypeAttr();
+  if (!logicalTA)
+    return emitOpError() << "missing 'logical_type' attribute";
+  auto logicalTy = llvm::cast<wave::WaveTensorType>(logicalTA.getValue());
+
+  if (logicalTy.getFullySpecified()) {
+    unsigned rank = logicalTy.getRank();
+    if (distr.size() != rank)
+      return emitOpError() << "'distributed_shape' has length " << distr.size()
+                           << " but logical tensor rank is " << rank;
+  }
+  for (mlir::Attribute a : distr) {
+    if (!llvm::isa<wave::WaveSymbolAttr>(a))
+      return emitOpError() << "elements of 'distributed_shape' must be "
+                              "#wave.symbol<...>, got "
+                           << a;
+  }
+
+  return mlir::success();
+}
+
+mlir::LogicalResult wave::AllocateOp::inferReturnTypes(
+    mlir::MLIRContext *context, std::optional<mlir::Location> location,
+    mlir::ValueRange operands, mlir::DictionaryAttr attributes,
+    mlir::OpaqueProperties properties, mlir::RegionRange /*regions*/,
+    llvm::SmallVectorImpl<mlir::Type> &inferredReturnTypes) {
+
+  wave::WaveTensorType logicalTy = nullptr;
+  auto *prop = properties.as<AllocateOp::Properties *>();
+
+  logicalTy = llvm::cast<wave::WaveTensorType>(prop->logical_type.getValue());
+
+  mlir::ArrayAttr dist = prop->distributed_shape;
+
+  llvm::SmallVector<wave::WaveSymbolAttr> newShape;
+  newShape.reserve(dist.size());
+  for (mlir::Attribute a : dist) {
+    auto sym = llvm::dyn_cast<wave::WaveSymbolAttr>(a);
+    newShape.push_back(sym);
+  }
+
+  auto resultTy = wave::WaveTensorType::get(
+      context, newShape, logicalTy.getFullySpecified(),
+      logicalTy.getElementType(), logicalTy.getAddressSpace());
+
+  inferredReturnTypes.push_back(resultTy);
+  return mlir::success();
 }
