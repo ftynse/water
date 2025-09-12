@@ -462,23 +462,46 @@ wave::YieldOp::getMutableSuccessorOperands(mlir::RegionBranchPoint) {
 // AllocateOp
 //-----------------------------------------------------------------------------
 mlir::LogicalResult wave::AllocateOp::verify() {
-  mlir::ArrayAttr arr = getDistributedShape();
-  if (!arr)
-    return emitOpError() << "missing 'distributed_shape'";
+  mlir::ArrayAttr distr = getDistributed();
+  if (!distr)
+    return emitOpError() << "missing 'distributed'";
 
-  auto resultType = llvm::cast<wave::WaveTensorType>(getResult().getType());
-  if (resultType.getFullySpecified()) {
-    unsigned rank = resultType.getRank();
-    if (arr.size() != rank)
-      return emitOpError() << "'distributed_shape' has length " << arr.size()
+  mlir::TypeAttr logicalTA = getLogicalAttr();
+  if (!logicalTA)
+    return emitOpError() << "missing 'logical' type attribute";
+  auto logicalTy = llvm::cast<wave::WaveTensorType>(logicalTA.getValue());
+
+  if (logicalTy.getFullySpecified()) {
+    unsigned rank = logicalTy.getRank();
+    if (distr.size() != rank)
+      return emitOpError() << "'distributed' has length " << distr.size()
                            << " but tensor rank is " << rank;
   }
-  for (mlir::Attribute a : arr) {
+  for (mlir::Attribute a : distr) {
     if (!llvm::isa<wave::WaveSymbolAttr>(a))
       return emitOpError()
-             << "'distributed_shape' elements must be #wave.symbol<...>, got "
-             << a;
+             << "'distributed' elements must be #wave.symbol<...>, got " << a;
   }
+  return mlir::success();
+}
+
+mlir::LogicalResult wave::AllocateOp::inferReturnTypes(
+    mlir::MLIRContext *context, std::optional<mlir::Location> location,
+    mlir::ValueRange operands, mlir::DictionaryAttr attributes,
+    mlir::OpaqueProperties properties, mlir::RegionRange /*regions*/,
+    llvm::SmallVectorImpl<mlir::Type> &inferredReturnTypes) {
+
+  wave::WaveTensorType logicalTy = nullptr;
+  auto *prop = properties.as<AllocateOp::Properties *>();
+
+  logicalTy = llvm::cast<wave::WaveTensorType>(prop->logical.getValue());
+
+  // TODO: replace logicalTy.getShape() with distributed shape
+  auto resultTy = wave::WaveTensorType::get(
+      context, logicalTy.getShape(), logicalTy.getFullySpecified(),
+      logicalTy.getElementType(), logicalTy.getAddressSpace());
+
+  inferredReturnTypes.push_back(resultTy);
   return mlir::success();
 }
 

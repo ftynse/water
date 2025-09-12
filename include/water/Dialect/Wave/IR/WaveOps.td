@@ -251,21 +251,26 @@ def WriteOp : WaveOp<"write", [
     "type($value_to_store) `,` type($memory)";
 }
 
-def AllocateOp : WaveOp<"allocate"> {
+def AllocateOp : WaveOp<"allocate",[DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Represents an allocation in an address space";
   let description = [{
     Allocates buffers with logical shape/type taken from the result
     type and with a separate distributed shape controlling the physical layout.
   }];
-  // TODO: add padding/tail_padding arguments and and reflect them in distributed_shape computation
   let arguments = !con((ins
-    Arg<ArrayAttr, "Size of the distributed shape">:$distributed_shape),
-   commonArguments);
+    Arg<TypeAttrOf<WaveTensorType>, "Logical type allocation ">:$logical,
+    Arg<ArrayAttr, "Distributed shape size">:$distributed,
+    //Arg<Optional<WaveTensorType>," ">:$parent, //maybe use WavetensorinMmemory
+    Arg<OptionalAttr<I64Attr>, "Layout padding">:$padding,
+    Arg<OptionalAttr<I64Attr>, "Tail padding">:$tail_padding
+  ), commonArguments);
 
   let results = (outs Res<WaveTensorType,"Allocated buffer">:$result
   );
 
-  let assemblyFormat = "`distributed_shape` `=` custom<SymbolList>($distributed_shape) attr-dict `:` type($result)";
+  let assemblyFormat =
+    "`logical` `=` $logical `,` "
+    "`distributed` `=` custom<SymbolList>($distributed) attr-dict `:` type($result)";
 
   let hasVerifier = 1;
 }

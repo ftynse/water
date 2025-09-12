@@ -112,10 +112,10 @@ func.func @register_with_symbols_empty_symbol_list() {
 
 
 // CHECK-LABEL: @allocate
-func.func @allocate() -> !wave.tensor<[@M, @K] of bf16, <shared>> {
+func.func @allocate() -> !wave.tensor<[@BLOCK_M, @BLOCK_K] of bf16, <shared>> {
 // CHECK: wave.allocate
-%0 = wave.allocate distributed_shape = [@BLOCK_M, @BLOCK_K] : !wave.tensor<[@M, @K] of bf16, <shared>>
-return %0 : !wave.tensor<[@M, @K] of bf16, <shared>>
+%0 = wave.allocate logical = !wave.tensor<[@BLOCK_M, @BLOCK_K] of bf16, <shared>>, distributed= [@BLOCK_M, @BLOCK_K] : !wave.tensor<[@BLOCK_M, @BLOCK_K] of bf16, <shared>>
+return %0 : !wave.tensor<[@BLOCK_M, @BLOCK_K] of bf16, <shared>>
 }
 
 // CHECK-LABEL: @addrspace_cast
