@@ -64,7 +64,7 @@ struct PromotePlaceholdersPass
               sharedBuf = alloc.getResult();
               promoted[srcMem] = sharedBuf;
 
-              // Seed contents: cast the handle to global, read(global) →
+              // seed contents: cast the handle to global, read(global) →
               // write(shared).
               auto globalAS = wave::WaveAddressSpaceAttr::get(
                   ctx, wave::WaveAddressSpace::Global);
@@ -89,8 +89,7 @@ struct PromotePlaceholdersPass
             IRRewriter::InsertionGuard g(rewriter);
             rewriter.setInsertionPoint(read);
             auto newRead = rewriter.create<wave::ReadOp>(
-                read.getLoc(), read.getResult().getType(),
-                /*memory=*/sharedBuf);
+                read.getLoc(), read.getResult().getType(), sharedBuf);
             rewriter.replaceOp(read, newRead.getResult());
           }
           continue;
@@ -132,8 +131,7 @@ struct PromotePlaceholdersPass
             IRRewriter::InsertionGuard g(rewriter);
             rewriter.setInsertionPoint(write);
             auto newWrite = rewriter.create<wave::WriteOp>(
-                write.getLoc(), /*value=*/write.getValue(),
-                /*memory=*/sharedBuf);
+                write.getLoc(), write.getValue(), sharedBuf);
             rewriter.replaceOp(write, newWrite);
           }
           continue;
