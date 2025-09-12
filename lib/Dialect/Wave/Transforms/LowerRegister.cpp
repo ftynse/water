@@ -46,7 +46,13 @@ public:
       }
     } else if (auto intType = dyn_cast<IntegerType>(elementType)) {
       if (auto cst = initValue.getDefiningOp<arith::ConstantIntOp>()) {
-        splatAttr = DenseIntElementsAttr::get(vectorType, cst.value());
+        if (!intType.isSignless()) {
+          return rewriter.notifyMatchFailure(
+              op, "only signless integer types are supported");
+        }
+        APInt valueInt(elementType.getIntOrFloatBitWidth(), cst.value(),
+                       /*isSigned=*/false);
+        splatAttr = DenseIntElementsAttr::get(vectorType, valueInt);
       } else {
         return rewriter.notifyMatchFailure(
             op, "init value must be constant integer");
