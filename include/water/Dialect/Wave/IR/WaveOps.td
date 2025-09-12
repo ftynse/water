@@ -10,6 +10,7 @@ include "water/Dialect/Wave/IR/WaveInterfaces.td"
 include "water/Dialect/Wave/IR/WaveTypes.td"
 include "mlir/IR/OpBase.td"
 include "water/Dialect/Wave/IR/WaveInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/IR/CommonAttrConstraints.td"
 include "mlir/IR/BuiltinAttributeInterfaces.td"
@@ -253,5 +254,30 @@ def WriteOp : WaveOp<"write", [
     "type($value_to_store) `,` type($memory)";
 }
 
+def AllocateOp : WaveOp<"allocate",[DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "Represents an allocation in an address space";
+  let description = [{
+    Allocates a buffer with the given `logical_type` tensor type. The `distributed_shape` attribute specifies the physical layout of the allocation in memory.
+    If a `parent` buffer is provided, this operation creates a view into the parent buffer, starting at the specified byte `offset`.
+  }];
+  let arguments = !con((ins
+    Arg<Optional<WaveTensorType>, "Optional parent buffer to view into">:$parent,
+    Arg<TypeAttrOf<WaveTensorType>, "Tensor type of the allocation ">:$logical_type,
+    Arg<ArrayAttr, "Shape of the distributed allocation">:$distributed_shape,
+    Arg<OptionalAttr<I64Attr>, "Layout padding">:$padding,
+    Arg<OptionalAttr<I64Attr>, "Byte offset into parent buffer">:$offset,
+    Arg<OptionalAttr<I64Attr>, "Extra elements appended after the logical tensor">:$tail_padding
+  ), commonArguments);
+
+  let results = (outs Res<WaveTensorType,"Allocated buffer">:$result
+  );
+
+  let assemblyFormat =
+    "($parent^)? "
+    "`logical` `=` $logical_type `,` "
+    "`distributed` `=` custom<SymbolList>($distributed_shape) attr-dict `:` functional-type(operands,results)";
+
+  let hasVerifier = 1;
+}
 
 #endif // WATER_DIALECT_WAVE_WAVEOPS
