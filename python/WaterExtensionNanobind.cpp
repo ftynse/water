@@ -8,7 +8,17 @@
 #include "mlir/Bindings/Python/NanobindAdaptors.h"
 #include "water/c/Dialects.h"
 
+#include "nanobind/nanobind.h"
+
+#include "mlir/CAPI/Support.h"
+#include "mlir/Support/TypeID.h"
+#include "water/Dialect/Wave/IR/WaveAttrs.h"
+
 namespace nb = nanobind;
+
+static MlirTypeID getWaveSymbolAttrTypeID() {
+  return wrap(mlir::TypeID::get<wave::WaveSymbolAttr>());
+}
 
 NB_MODULE(_waterDialects, m) {
   auto d = m.def_submodule("wave");
@@ -26,17 +36,18 @@ NB_MODULE(_waterDialects, m) {
   // WaveSymbolAttr
   //===---------------------------------------------------------------------===//
 
-  m.attr("WaveSymbolAttr") = mlir_attribute_subclass(m, "WaveSymbolAttr", mlirAttributeIsAWaveSymbolAttr)
+  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
+      d, "WaveSymbolAttr", mlirAttributeIsAWaveSymbolAttr,
+      getWaveSymbolAttrTypeID)
       .def_classmethod(
           "get",
-          [](const nb::object &cls, MlirContext context, const nb::bytes &symbolName) {
-                      std::cout << "WaveSymbolAttr.get called" << std::endl;
-
-            MlirStringRef symbolNameStrRef = mlirStringRefCreate(
-                static_cast<char *>(const_cast<void *>(symbolName.data())),
-                symbolName.size());
+          [](const nb::object &cls, const std::string &symbolName,
+             MlirContext context) {
+            MlirStringRef symbolNameStrRef =
+                mlirStringRefCreate(symbolName.data(), symbolName.size());
             return cls(mlirWaveSymbolAttrGet(context, symbolNameStrRef));
           },
-          "cls"_a, "context"_a, "symbol"_a,
-          "Gets a wave.wave_symbol from parameters.")
+          nb::arg("cls"), nb::arg("symbolName"),
+          nb::arg("context") = nb::none(),
+          "Gets a wave.wave_symbol from parameters.");
 }
