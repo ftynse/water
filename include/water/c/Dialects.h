@@ -15,6 +15,20 @@ extern "C" {
 
 MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(Wave, wave);
 
+//===---------------------------------------------------------------------===//
+// WaveSymbolAttr
+//===---------------------------------------------------------------------===//
+
+/// Checks whether the given MLIR attribute is a WaveSymbolAttr.
+MLIR_CAPI_EXPORTED bool mlirAttributeIsAWaveSymbolAttr(MlirAttribute attr);
+
+/// Creates a new WaveSymbolAttr with the given symbol name.
+MLIR_CAPI_EXPORTED MlirAttribute
+mlirWaveSymbolAttrGet(MlirContext mlirCtx, MlirStringRef symbolName);
+
+/// Returns the typeID of a WaveSymbolAttr.
+MLIR_CAPI_EXPORTED MlirTypeID mlirWaveSymbolAttrGetTypeID();
+
 #ifdef __cplusplus
 }
 #endif

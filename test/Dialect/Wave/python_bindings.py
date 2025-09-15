@@ -1,6 +1,5 @@
 # REQUIRES: water_python
 # RUN: env PYTHONPATH=%py_pkg_root:%PYTHONPATH %python %s | FileCheck %s
-# CHECK: wave_ok
 
 try:
     from water_mlir import ir
@@ -16,6 +15,11 @@ try:
         raise RuntimeError("module import path for wave differs")
     with ir.Context() as ctx:
         wave.register_dialect(ctx)
+
+        # CHECK: #wave.symbol<"test">
+        print(wave.WaveSymbolAttr.get("test"))
+
+    # CHECK: wave_ok
     print("wave_ok")
 except Exception as e:
     print("error:", e)

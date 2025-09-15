@@ -8,6 +8,10 @@
 #include "mlir/Bindings/Python/NanobindAdaptors.h"
 #include "water/c/Dialects.h"
 
+#include "nanobind/nanobind.h"
+
+#include "mlir/CAPI/Support.h"
+
 namespace nb = nanobind;
 
 NB_MODULE(_waterDialects, m) {
@@ -21,4 +25,25 @@ NB_MODULE(_waterDialects, m) {
           mlirDialectHandleLoadDialect(h, context);
       },
       nb::arg("context").none() = nb::none(), nb::arg("load") = true);
+
+  //===---------------------------------------------------------------------===//
+  // WaveSymbolAttr
+  //===---------------------------------------------------------------------===//
+
+  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
+      d, "WaveSymbolAttr", mlirAttributeIsAWaveSymbolAttr,
+      mlirWaveSymbolAttrGetTypeID)
+      .def_classmethod(
+          "get",
+          [](const nb::object &cls, const std::string &symbolName,
+             // MlirContext should always come last to allow for being
+             // automatically deduced from context.
+             MlirContext context) {
+            MlirStringRef symbolNameStrRef =
+                mlirStringRefCreate(symbolName.data(), symbolName.size());
+            return cls(mlirWaveSymbolAttrGet(context, symbolNameStrRef));
+          },
+          nb::arg("cls"), nb::arg("symbolName"),
+          nb::arg("context") = nb::none(),
+          "Gets a wave.wave_symbol from parameters.");
 }
