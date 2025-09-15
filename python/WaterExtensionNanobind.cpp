@@ -11,14 +11,8 @@
 #include "nanobind/nanobind.h"
 
 #include "mlir/CAPI/Support.h"
-#include "mlir/Support/TypeID.h"
-#include "water/Dialect/Wave/IR/WaveAttrs.h"
 
 namespace nb = nanobind;
-
-static MlirTypeID getWaveSymbolAttrTypeID() {
-  return wrap(mlir::TypeID::get<wave::WaveSymbolAttr>());
-}
 
 NB_MODULE(_waterDialects, m) {
   auto d = m.def_submodule("wave");
@@ -38,7 +32,7 @@ NB_MODULE(_waterDialects, m) {
 
   mlir::python::nanobind_adaptors::mlir_attribute_subclass(
       d, "WaveSymbolAttr", mlirAttributeIsAWaveSymbolAttr,
-      getWaveSymbolAttrTypeID)
+      mlirWaveSymbolAttrGetTypeID)
       .def_classmethod(
           "get",
           [](const nb::object &cls, const std::string &symbolName,
