@@ -42,6 +42,8 @@ NB_MODULE(_waterDialects, m) {
       .def_classmethod(
           "get",
           [](const nb::object &cls, const std::string &symbolName,
+             // MlirContext should always come last to allow for being
+             // automatically deduced from context.
              MlirContext context) {
             MlirStringRef symbolNameStrRef =
                 mlirStringRefCreate(symbolName.data(), symbolName.size());

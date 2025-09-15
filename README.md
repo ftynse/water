@@ -15,7 +15,9 @@ This setup assumes that you have built LLVM and MLIR in `$BUILD_DIR`.
 cmake -G Ninja \
       -B build \
       -DMLIR_DIR=$BUILD_DIR/lib/cmake/mlir \
-      -DBUILD_SHARED_LIBS=On
+      -DBUILD_SHARED_LIBS=On \
+      -DPython3_EXECUTABLE="$(which python)" \
+      -DWATER_ENABLE_PYTHON=ON
 cmake --build build --target check-water
 ```
 
