@@ -16,11 +16,16 @@ def WaveDialect : Dialect {
   let useDefaultAttributePrinterParser = 1;
   let useDefaultTypePrinterParser = 1;
 
+  let hasOperationAttrVerify = 1;
+
   let extraClassDeclaration = [{
     // Registration functions. The bodies of these must be placed in the file
     // containing private implementations of attributes and types, respectively.
     void registerAttributes();
     void registerTypes();
+
+    const static constexpr ::llvm::StringLiteral
+    kNormalFormAttrName = "wave.normal_form";
   }];
 }
 

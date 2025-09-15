@@ -14,4 +14,10 @@
 #define GET_ATTRDEF_CLASSES
 #include "water/Dialect/Wave/IR/WaveAttrs.h.inc"
 
+namespace wave::detail {
+llvm::LogicalResult verifyNormalFormAttr(mlir::Operation *root,
+                                         wave::WaveNormalForm form,
+                                         bool emitDiagnostics);
+}
+
 #endif // WATER_DIALECT_WAVE_IR_WAVEATTRS_H

@@ -9,6 +9,8 @@
 #include "mlir/Analysis/DataFlow/SparseAnalysis.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
+#include "water/Dialect/Wave/IR/WaveAttrs.h"
+#include "water/Dialect/Wave/IR/WaveDialect.h"
 #include "water/Dialect/Wave/IR/WaveInterfaces.h"
 #include "water/Dialect/Wave/IR/WaveOps.h"
 #include "water/Dialect/Wave/Transforms/Passes.h"
@@ -420,12 +422,47 @@ public:
   }
 };
 
+static llvm::LogicalResult
+verifyNormalFormPassPrecondition(wave::WaveNormalForm form,
+                                 mlir::Operation *root,
+                                 llvm::StringRef passName) {
+
+  for (mlir::Operation *op = root; op != nullptr; op = op->getParentOp()) {
+    auto attr = op->getAttrOfType<wave::WaveNormalFormAttr>(
+        wave::WaveDialect::kNormalFormAttrName);
+    if (!attr)
+      continue;
+    if (wave::bitEnumContainsAll(attr.getValue(), form))
+      return llvm::success();
+  }
+  return root->emitError()
+         << passName
+         << " pass expects the root operation or its ancestor to guarantee the "
+         << wave::stringifyEnum(form) << " normal form";
+}
+
+static llvm::LogicalResult
+setNormalFormPassPostcondition(wave::WaveNormalForm form,
+                               mlir::Operation *root) {
+  llvm::LogicalResult result =
+      wave::detail::verifyNormalFormAttr(root, form, /*emitDiagnostics=*/false);
+  if (llvm::succeeded(result))
+    root->setAttr(wave::WaveDialect::kNormalFormAttrName,
+                  wave::WaveNormalFormAttr::get(root->getContext(), form));
+  return result;
+}
+
 // Type inference pass implementation.
 class InferTypes : public wave::impl::WaterWaveInferTypesPassBase<InferTypes> {
 public:
   using WaterWaveInferTypesPassBase::WaterWaveInferTypesPassBase;
 
   void runOnOperation() override {
+    if (llvm::failed(verifyNormalFormPassPrecondition(
+            wave::WaveNormalForm::FunctionBoundarySpecified, getOperation(),
+            getArgument())))
+      return signalPassFailure();
+
     // Configure the analyses. The dead code and SCP analyses are required by
     // the logic of the solver currently.
     mlir::SymbolTableCollection symbolTable;
@@ -511,6 +548,11 @@ public:
         });
 
     if (walkResult.wasInterrupted())
+      return signalPassFailure();
+
+    llvm::LogicalResult result = setNormalFormPassPostcondition(
+        wave::WaveNormalForm::AllTypesSpecified, getOperation());
+    if (llvm::failed(result) && !force)
       return signalPassFailure();
   }
 };

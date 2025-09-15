@@ -15,6 +15,31 @@ include "mlir/IR/EnumAttr.td"
 // Address space enum and attribute
 //-----------------------------------------------------------------------------
 
+def NORMAL_FORM_FUNC_BOUNDARY : I32BitEnumAttrCaseBit<
+    "FunctionBoundarySpecified", 0, "full_func_boundary">;
+def NORMAL_FORM_OP_TYPES : I32BitEnumAttrCaseBit<
+    "OpTypesSpecified",          1, "full_op_types">;
+def NORMAL_FORM_FULL_TYPES : I32BitEnumAttrCaseGroup<
+    "AllTypesSpecified", [
+        NORMAL_FORM_FUNC_BOUNDARY, NORMAL_FORM_OP_TYPES
+    ], "full_types">;
+
+def WaveNormalFormEnum : I32BitEnumAttr<"WaveNormalForm", "", [
+  I32BitEnumAttrCaseNone<"None", "none">,
+  NORMAL_FORM_FUNC_BOUNDARY,
+  NORMAL_FORM_OP_TYPES,
+  NORMAL_FORM_FULL_TYPES
+]> {
+  let cppNamespace = "::wave";
+  let separator = ",";
+  let genSpecializedAttr = 0;
+  let printBitEnumPrimaryGroups = 1;
+}
+
+def WaveNormalFormAttr : EnumAttr<WaveDialect, WaveNormalFormEnum, "normal_form"> {
+  let assemblyFormat = "`<` $value `>`";
+}
+
 def WaveAddressSpaceEnum
     : I32EnumAttr<"WaveAddressSpace", "Where the tensor is located", [
   I32EnumAttrCase<"Unspecified", 0, "unspecified">,

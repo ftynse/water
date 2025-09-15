@@ -21,3 +21,18 @@ void wave::WaveDialect::initialize() {
       >();
   registerTypes();
 }
+
+llvm::LogicalResult
+wave::WaveDialect::verifyOperationAttribute(mlir::Operation *op,
+                                            mlir::NamedAttribute attr) {
+  if (attr.getName() == kNormalFormAttrName) {
+    if (auto enumAttr = llvm::dyn_cast<WaveNormalFormAttr>(attr.getValue())) {
+      return detail::verifyNormalFormAttr(op, enumAttr.getValue(),
+                                          /*emitDiagnostics=*/true);
+    }
+    return op->emitError() << attr.getName()
+                           << " expects to a WaveNormalFormAttr";
+  }
+  return op->emitError() << "unexpected wave dialect attribute "
+                         << attr.getName() << " = " << attr.getValue();
+}

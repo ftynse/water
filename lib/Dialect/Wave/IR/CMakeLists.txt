@@ -11,4 +11,5 @@ add_mlir_dialect_library(MLIRWaveDialect
   LINK_LIBS PUBLIC
   MLIRIR
   MLIRControlFlowInterfaces
+  MLIRFunctionInterfaces
 )
