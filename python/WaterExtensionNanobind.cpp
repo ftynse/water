@@ -21,4 +21,22 @@ NB_MODULE(_waterDialects, m) {
           mlirDialectHandleLoadDialect(h, context);
       },
       nb::arg("context").none() = nb::none(), nb::arg("load") = true);
+
+  //===---------------------------------------------------------------------===//
+  // WaveSymbolAttr
+  //===---------------------------------------------------------------------===//
+
+  m.attr("WaveSymbolAttr") = mlir_attribute_subclass(m, "WaveSymbolAttr", mlirAttributeIsAWaveSymbolAttr)
+      .def_classmethod(
+          "get",
+          [](const nb::object &cls, MlirContext context, const nb::bytes &symbolName) {
+                      std::cout << "WaveSymbolAttr.get called" << std::endl;
+
+            MlirStringRef symbolNameStrRef = mlirStringRefCreate(
+                static_cast<char *>(const_cast<void *>(symbolName.data())),
+                symbolName.size());
+            return cls(mlirWaveSymbolAttrGet(context, symbolNameStrRef));
+          },
+          "cls"_a, "context"_a, "symbol"_a,
+          "Gets a wave.wave_symbol from parameters.")
 }

@@ -15,6 +15,15 @@ extern "C" {
 
 MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(Wave, wave);
 
+//===---------------------------------------------------------------------===//
+// WaveSymbolAttr
+//===---------------------------------------------------------------------===//
+
+MLIR_CAPI_EXPORTED bool mlirAttributeIsAWaveSymbolAttr(MlirAttribute attr);
+
+MLIR_CAPI_EXPORTED MlirAttribute
+mlirWaveSymbolAttrGet(MlirContext mlirCtx, MlirStringRef symbolName);
+
 #ifdef __cplusplus
 }
 #endif

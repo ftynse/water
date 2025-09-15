@@ -16,6 +16,8 @@ try:
         raise RuntimeError("module import path for wave differs")
     with ir.Context() as ctx:
         wave.register_dialect(ctx)
+        print(wave.AddOp)
+        print(wave.WaveSymbolAttr.get(ctx, "test"))
     print("wave_ok")
 except Exception as e:
     print("error:", e)
