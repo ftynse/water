@@ -29,6 +29,22 @@ mlirWaveSymbolAttrGet(MlirContext mlirCtx, MlirStringRef symbolName);
 /// Returns the typeID of a WaveSymbolAttr.
 MLIR_CAPI_EXPORTED MlirTypeID mlirWaveSymbolAttrGetTypeID();
 
+//===---------------------------------------------------------------------===//
+// WaveIndexMappingAttr
+//===---------------------------------------------------------------------===//
+
+/// Checks whether the given MLIR attribute is a WaveIndexMappingAttr.
+MLIR_CAPI_EXPORTED bool
+mlirAttributeIsAWaveIndexMappingAttr(MlirAttribute attr);
+
+/// Creates a new WaveIndexMappingAttr with the given symbol name.
+MLIR_CAPI_EXPORTED MlirAttribute mlirWaveIndexMappingAttrGet(
+    MlirContext mlirCtx, MlirAttribute *symbolNames, size_t numSymbolNames,
+    MlirAffineMap start, MlirAffineMap step, MlirAffineMap stride);
+
+/// Returns the typeID of a WaveIndexMappingAttr.
+MLIR_CAPI_EXPORTED MlirTypeID mlirWaveIndexMappingAttrGetTypeID();
+
 #ifdef __cplusplus
 }
 #endif

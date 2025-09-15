@@ -19,6 +19,18 @@ try:
         # CHECK: #wave.symbol<"test">
         print(wave.WaveSymbolAttr.get("test"))
 
+        # CHECK: #wave<index_mapping[$WG0, BLOCK_M, $T0] -> ($WG0 * 3, $WG0 + BLOCK_M, $T0 mod $WG0)>
+        symbol_names = ["$WG0", "BLOCK_M", "$T0"]
+        s0 = ir.AffineSymbolExpr.get(0)
+        s1 = ir.AffineSymbolExpr.get(1)
+        s2 = ir.AffineSymbolExpr.get(2)
+        start_map = ir.AffineMap.get(0, 3, [s0 * 3])
+        step_map = ir.AffineMap.get(0, 3, [s0 + s1])
+        stride_map = ir.AffineMap.get(0, 3, [s2 % s0])
+        print(
+            wave.WaveIndexMappingAttr.get(symbol_names, start_map, step_map, stride_map)
+        )
+
     # CHECK: wave_ok
     print("wave_ok")
 except Exception as e:
