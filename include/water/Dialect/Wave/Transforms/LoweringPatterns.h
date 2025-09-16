@@ -24,6 +24,10 @@ void populateWaveRegisterLoweringPatterns(
 void populateWaveBinaryOpLoweringPatterns(
     WaveTensorTypeConverter &typeConverter, mlir::RewritePatternSet &patterns);
 
+// Adds pattern that lowers 'wave.allocate' ops to upstream MLIR ops.
+void populateWaveAllocateOpLoweringPatterns(
+    WaveTensorTypeConverter &typeConverter, mlir::RewritePatternSet &patterns);
+
 } // namespace wave
 
 #endif // WATER_DIALECT_WAVE_TRANSFORMS_TRANSFORMS_H

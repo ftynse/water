@@ -3,6 +3,7 @@ add_mlir_dialect_library(MLIRWaveTransforms
   LowerBinaryOps.cpp
   LowerRegister.cpp
   LowerWaveToMLIR.cpp
+  LowerAllocateOp.cpp
   TypeConverter.cpp
   Utils.cpp
 
@@ -20,5 +21,6 @@ add_mlir_dialect_library(MLIRWaveTransforms
   MLIRPass
   MLIRTransforms
   MLIRVectorDialect
+  MLIRMemRefDialect
   MLIRWaveDialect
 )

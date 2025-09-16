@@ -254,28 +254,25 @@ def WriteOp : WaveOp<"write", [
     "type($value_to_store) `,` type($memory)";
 }
 
-def AllocateOp : WaveOp<"allocate",[DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+def AllocateOp : WaveOp<"allocate"> {
   let summary = "Represents an allocation in an address space";
   let description = [{
-    Allocates a buffer with the given `logical_type` tensor type. The `distributed_shape` attribute specifies the physical layout of the allocation in memory.
-    If a `parent` buffer is provided, this operation creates a view into the parent buffer, starting at the specified byte `offset`.
+    Allocates memory for a Wave tensor in the address space indicated by the
+    result type, or creates a view into an existing parent buffer starting at the specified 'offset'.
+    The `distributed_shape` specifies the physical layout of the allocation as affine expressions over named symbols (e.g., may include
+    padding).
   }];
   let arguments = !con((ins
     Arg<Optional<WaveTensorType>, "Optional parent buffer to view into">:$parent,
-    Arg<TypeAttrOf<WaveTensorType>, "Tensor type of the allocation ">:$logical_type,
-    Arg<ArrayAttr, "Shape of the distributed allocation">:$distributed_shape,
-    Arg<OptionalAttr<I64Attr>, "Layout padding">:$padding,
-    Arg<OptionalAttr<I64Attr>, "Byte offset into parent buffer">:$offset,
-    Arg<OptionalAttr<I64Attr>, "Extra elements appended after the logical tensor">:$tail_padding
+    Arg<WaveDistributedShapeAttr, "Distributed (physical) shape">:$distributed_shape,
+    Arg<Optional<Index>, "Byte offset into parent buffer">:$offset
   ), commonArguments);
 
   let results = (outs Res<WaveTensorType,"Allocated buffer">:$result
   );
 
   let assemblyFormat =
-    "($parent^)? "
-    "`logical` `=` $logical_type `,` "
-    "`distributed` `=` custom<SymbolList>($distributed_shape) attr-dict `:` functional-type(operands,results)";
+    " (`in` $parent^ `:` type($parent) `[` $offset `]`)? attr-dict `:` type($result)";
 
   let hasVerifier = 1;
 }

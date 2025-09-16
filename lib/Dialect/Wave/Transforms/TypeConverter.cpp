@@ -9,8 +9,8 @@
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "water/Dialect/Wave/IR/WaveDialect.h"
+#include "water/Dialect/Wave/IR/WaveOps.h"
 #include "water/Dialect/Wave/IR/WaveTypes.h"
-
 #include "llvm/Support/Debug.h"
 
 #define DEBUG_TYPE "wave-tensor-type-converter"
@@ -45,15 +45,28 @@ wave::WaveTensorTypeConverter::WaveTensorTypeConverter() {
       return std::nullopt;
 
     if (auto waveType = dyn_cast<wave::WaveTensorType>(type)) {
-      std::optional<llvm::SmallVector<int64_t>> shape =
-          waveType.getResolvedShape(hyperparameterAttr);
-      // Fail if shapes aren't resolved.
-      if (shape == std::nullopt) {
-        LLVM_DEBUG({
-          DBGS() << "WaveTensorType conversion failed: symbolic shape "
-                    "unresolved\n";
-        });
-        return std::nullopt;
+
+      std::optional<llvm::SmallVector<int64_t>> shape;
+
+      // If this value comes from `wave.allocate`, resolve its distributed
+      // (physical) shape
+      if (Operation *def = v.getDefiningOp()) {
+        if (auto alloc = llvm::dyn_cast<wave::AllocateOp>(def)) {
+          wave::DistributedShapeAttr dist = alloc.getDistributedShape();
+          shape = dist.getResolvedShape(hyperparameterAttr);
+        }
+      }
+      // Fallback: resolve from the WaveTensorType's own (symbolic) shape
+      if (!shape) {
+        shape = waveType.getResolvedShape(hyperparameterAttr);
+        // Fail if shapes aren't resolved.
+        if (shape == std::nullopt) {
+          LLVM_DEBUG({
+            DBGS() << "WaveTensorType conversion failed: symbolic shape "
+                      "unresolved\n";
+          });
+          return std::nullopt;
+        }
       }
       // Convert WaveTensorInRegister to VectorType, and WaveTensorInMemory to
       // MemRefType with proper memory space.

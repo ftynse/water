@@ -9,6 +9,7 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -39,12 +40,14 @@ struct LowerWaveToMLIRPass
     wave::WaveTensorTypeConverter typeConverter;
     ConversionTarget target(*ctx);
 
-    target.addLegalDialect<arith::ArithDialect, vector::VectorDialect>();
-    target.addIllegalOp<wave::RegisterOp>();
+    target.addLegalDialect<arith::ArithDialect, vector::VectorDialect,
+                           memref::MemRefDialect>();
+    target.addIllegalOp<wave::RegisterOp, wave::AllocateOp>();
 
     RewritePatternSet patterns(ctx);
     wave::populateWaveRegisterLoweringPatterns(typeConverter, patterns);
     wave::populateWaveBinaryOpLoweringPatterns(typeConverter, patterns);
+    wave::populateWaveAllocateOpLoweringPatterns(typeConverter, patterns);
 
     ConversionConfig config;
     config.allowPatternRollback = false;
