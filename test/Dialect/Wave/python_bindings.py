@@ -31,6 +31,33 @@ try:
             wave.WaveIndexMappingAttr.get(symbol_names, start_map, step_map, stride_map)
         )
 
+        try:
+            wave.WaveIndexMappingAttr.get([], start_map, step_map, stride_map)
+        except ValueError as e:
+            assert "co-indexed" in str(e)
+        else:
+            assert False, "Expected to fail with ValueError."
+
+        try:
+            dimension_map = ir.AffineMap.get(1, 0, [])
+            wave.WaveIndexMappingAttr.get(
+                [], dimension_map, dimension_map, dimension_map
+            )
+        except ValueError as e:
+            assert "not involve dimensions" in str(e)
+        else:
+            assert False, "Expected to fail with ValueError."
+
+        try:
+            no_result_map = ir.AffineMap.get(0, 3, [])
+            wave.WaveIndexMappingAttr.get(
+                symbol_names, start_map, no_result_map, stride_map
+            )
+        except ValueError as e:
+            assert "same number of results" in str(e)
+        else:
+            assert False, "Expected to fail with ValueError."
+
     # CHECK: wave_ok
     print("wave_ok")
 except Exception as e:
