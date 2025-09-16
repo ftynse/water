@@ -4,6 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "mlir-c/AffineMap.h"
 #include "mlir/Bindings/Python/Nanobind.h"
 #include "mlir/Bindings/Python/NanobindAdaptors.h"
 #include "water/c/Dialects.h"
@@ -45,5 +46,52 @@ NB_MODULE(_waterDialects, m) {
           },
           nb::arg("cls"), nb::arg("symbolName"),
           nb::arg("context") = nb::none(),
-          "Gets a wave.wave_symbol from parameters.");
+          "Gets a wave.WaveSymbolAttr from parameters.");
+
+  //===---------------------------------------------------------------------===//
+  // WaveIndexMappingAttr
+  //===---------------------------------------------------------------------===//
+
+  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
+      d, "WaveIndexMappingAttr", mlirAttributeIsAWaveIndexMappingAttr,
+      mlirWaveIndexMappingAttrGetTypeID)
+      .def_classmethod(
+          "get",
+          [](const nb::object &cls, const std::vector<std::string> &symbolNames,
+             MlirAffineMap start, MlirAffineMap step, MlirAffineMap stride,
+             // MlirContext should always come last to allow for being
+             // automatically deduced from context.
+             MlirContext context) {
+            std::vector<MlirAttribute> symbolAttrs;
+            symbolAttrs.reserve(symbolNames.size());
+
+            for (const std::string &symbolName : symbolNames) {
+              MlirStringRef symbolNameStrRef =
+                  mlirStringRefCreate(symbolName.data(), symbolName.size());
+              MlirAttribute symbolAttr =
+                  mlirWaveSymbolAttrGet(context, symbolNameStrRef);
+              symbolAttrs.push_back(symbolAttr);
+            }
+
+            intptr_t numSymbols = symbolAttrs.size();
+            intptr_t numResults = mlirAffineMapGetNumResults(start);
+            for (MlirAffineMap map : {start, step, stride}) {
+              if (numSymbols != mlirAffineMapGetNumSymbols(map)) {
+                throw nb::value_error("Expected symbol_names, start, step and "
+                                      "stride to be co-indexed.");
+              }
+              if (mlirAffineMapGetNumDims(map) != 0) {
+                throw nb::value_error("Maps should not involve dimensions.");
+              }
+              if (numResults != mlirAffineMapGetNumResults(map)) {
+                throw nb::value_error(
+                    "Maps should have the same number of results.");
+              }
+            }
+            return cls(mlirWaveIndexMappingAttrGet(context, symbolAttrs.data(),
+                                                   start, step, stride));
+          },
+          nb::arg("cls"), nb::arg("symbol_names"), nb::arg("start"),
+          nb::arg("step"), nb::arg("stride"), nb::arg("context") = nb::none(),
+          "Gets a wave.WaveIndexMappingAttr from parameters.");
 }

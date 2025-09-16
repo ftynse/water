@@ -19,6 +19,45 @@ try:
         # CHECK: #wave.symbol<"test">
         print(wave.WaveSymbolAttr.get("test"))
 
+        # CHECK: #wave<index_mapping[$WG0, BLOCK_M, $T0] -> ($WG0 * 3, $WG0 + BLOCK_M, $T0 mod $WG0)>
+        symbol_names = ["$WG0", "BLOCK_M", "$T0"]
+        s0 = ir.AffineSymbolExpr.get(0)
+        s1 = ir.AffineSymbolExpr.get(1)
+        s2 = ir.AffineSymbolExpr.get(2)
+        start_map = ir.AffineMap.get(0, 3, [s0 * 3])
+        step_map = ir.AffineMap.get(0, 3, [s0 + s1])
+        stride_map = ir.AffineMap.get(0, 3, [s2 % s0])
+        print(
+            wave.WaveIndexMappingAttr.get(symbol_names, start_map, step_map, stride_map)
+        )
+
+        try:
+            wave.WaveIndexMappingAttr.get([], start_map, step_map, stride_map)
+        except ValueError as e:
+            assert "co-indexed" in str(e)
+        else:
+            assert False, "Expected to fail with ValueError."
+
+        try:
+            dimension_map = ir.AffineMap.get(1, 0, [])
+            wave.WaveIndexMappingAttr.get(
+                [], dimension_map, dimension_map, dimension_map
+            )
+        except ValueError as e:
+            assert "not involve dimensions" in str(e)
+        else:
+            assert False, "Expected to fail with ValueError."
+
+        try:
+            no_result_map = ir.AffineMap.get(0, 3, [])
+            wave.WaveIndexMappingAttr.get(
+                symbol_names, start_map, no_result_map, stride_map
+            )
+        except ValueError as e:
+            assert "same number of results" in str(e)
+        else:
+            assert False, "Expected to fail with ValueError."
+
     # CHECK: wave_ok
     print("wave_ok")
 except Exception as e:
