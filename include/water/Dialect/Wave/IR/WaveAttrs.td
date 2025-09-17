@@ -30,6 +30,7 @@ def WaveAddressSpaceAttr
     : EnumAttr<WaveDialect, WaveAddressSpaceEnum, "address_space"> {
   let assemblyFormat = "`<` $value `>`";
 }
+
 //-----------------------------------------------------------------------------
 // MMA kind enum and attribute
 //-----------------------------------------------------------------------------
@@ -67,6 +68,43 @@ def WaveMmaKindEnum
 }
 
 def WaveMmaKindAttr : EnumAttr<WaveDialect, WaveMmaKindEnum, "mma_kind"> {
+  let assemblyFormat = "`<` $value `>`";
+}
+
+//-----------------------------------------------------------------------------
+// Normal form enum and attribute
+//-----------------------------------------------------------------------------
+
+def NORMAL_FORM_FUNC_BOUNDARY : I32BitEnumAttrCaseBit<
+    "FunctionBoundarySpecified", 0, "full_func_boundary">;
+def NORMAL_FORM_OP_TYPES : I32BitEnumAttrCaseBit<
+    "OpTypesSpecified",          1, "full_op_types">;
+def NORMAL_FORM_INDEX_EXPRS : I32BitEnumAttrCaseBit<
+    "IndexExprsSpecified",       2, "index_exprs">;
+
+def NORMAL_FORM_FULL_TYPES : I32BitEnumAttrCaseGroup<
+    "AllTypesSpecified", [
+        NORMAL_FORM_FUNC_BOUNDARY, NORMAL_FORM_OP_TYPES
+    ], "full_types">;
+
+def WaveNormalFormEnum : I32BitEnumAttr<"WaveNormalForm", "", [
+  I32BitEnumAttrCaseNone<"None", "none">,
+  // Bits.
+  NORMAL_FORM_FUNC_BOUNDARY,
+  NORMAL_FORM_OP_TYPES,
+  NORMAL_FORM_INDEX_EXPRS,
+
+  // Group aliases.
+  NORMAL_FORM_FULL_TYPES
+]> {
+  let cppNamespace = "::wave";
+  let separator = ",";
+  let genSpecializedAttr = 0;
+  let printBitEnumPrimaryGroups = 1;
+}
+
+def WaveNormalFormAttr
+    : EnumAttr<WaveDialect, WaveNormalFormEnum, "normal_form"> {
   let assemblyFormat = "`<` $value `>`";
 }
 

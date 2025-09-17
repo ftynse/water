@@ -7,3 +7,13 @@ func.func private @unspecified_tensor() -> !wave.tensor<any of !wave.tensor<any 
 
 // expected-error @below {{shape not expected for non-fully specified tensors}}
 "wave_test.create_tensor"() {fully_specified = false, shape = [@A, @B]} : () -> ()
+
+// -----
+
+// expected-error @below {{"wave.hyperparameters" expects a WaveHyperparameterAttr}}
+module attributes {wave.hyperparameters = 1} {}
+
+// -----
+
+// expected-error @below {{unexpected wave dialect attribute "wave.unexpected"}}
+module attributes {wave.unexpected = 42} {}

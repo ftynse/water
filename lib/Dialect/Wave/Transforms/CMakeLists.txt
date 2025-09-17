@@ -4,6 +4,7 @@ add_mlir_dialect_library(MLIRWaveTransforms
   LowerRegister.cpp
   LowerWaveToMLIR.cpp
   TypeConverter.cpp
+  Utils.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${PROJECT_SOURCE_DIR}/include/water/
