@@ -123,13 +123,11 @@ func.func @register_with_hyperparameter() attributes {hyperparameters = #wave.hy
 
 // CHECK-LABEL: @allocate
 func.func @allocate() -> !wave.tensor<[@M, @N] of bf16, <shared>> {
-  %c64 = arith.constant 64 : index
-
   // CHECK: wave.allocate
   %parent = wave.allocate { distributed_shape = #wave.distributed_shape<[BLOCK_M, BLOCK_K] -> (BLOCK_M, BLOCK_K + 4)> }
     : !wave.tensor<[@M, @N] of bf16, <shared>>
 
-  %buf = wave.allocate in %parent : !wave.tensor<[@M, @N] of bf16, <shared>> [%c64]
+  %buf = wave.allocate in %parent : !wave.tensor<[@M, @N] of bf16, <shared>> [64]
     { distributed_shape = #wave.distributed_shape<[BLOCK_M, BLOCK_K] -> (BLOCK_M, BLOCK_K + 4)> }
     : !wave.tensor<[@M, @N] of bf16, <shared>>
 
