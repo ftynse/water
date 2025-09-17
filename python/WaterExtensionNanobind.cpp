@@ -106,20 +106,34 @@ NB_MODULE(_waterDialects, m) {
       mlirWaveHyperparameterAttrGetTypeID)
       .def_classmethod(
           "get",
-          [](const nb::object &cls, const std::vector<std::string> &symbolNames,
-             const std::vector<int64_t> &resolvedValues,
+          [](const nb::object &cls, const nb::dict &symbolDict,
              // MlirContext should always come last to allow for being
              // automatically deduced from context.
              MlirContext context) {
             std::vector<MlirNamedAttribute> namedAttrs;
-            if (symbolNames.size() != resolvedValues.size()) {
-              throw nb::value_error("Expected symbol_names and resolved_values"
-                                    "to be co-indexed.");
-            }
-            namedAttrs.reserve(symbolNames.size());
+            namedAttrs.reserve(symbolDict.size());
 
-            for (auto [symbolName, resolvedValue] :
-                 llvm::zip(symbolNames, resolvedValues)) {
+            for (auto item : symbolDict) {
+              // Get the key (symbol name)
+              nb::handle key_handle = item.first;
+              if (!nb::isinstance<nb::str>(key_handle)) {
+                throw nb::type_error("Symbol dictionary key must be a string");
+              }
+              std::string symbolName = nb::cast<std::string>(key_handle);
+
+              // Get the value (resolved value)
+              nb::handle value_handle = item.second;
+              if (!nb::isinstance<nb::int_>(value_handle)) {
+                throw nb::type_error(
+                    "Symbol dictionary value must be an integer");
+              }
+              int64_t resolvedValue;
+              try {
+                resolvedValue = nb::cast<int64_t>(value_handle);
+              } catch (const nb::cast_error &e) {
+                throw nb::value_error("Value is too large for int64_t");
+              }
+
               namedAttrs.push_back(mlirNamedAttributeGet(
                   mlirIdentifierGet(context,
                                     mlirStringRefCreate(symbolName.data(),
@@ -128,11 +142,10 @@ NB_MODULE(_waterDialects, m) {
                                      resolvedValue)));
             }
 
-            return cls(mlirWaveHyperparameterAttrGet(
-                context, mlirDictionaryAttrGet(context, namedAttrs.size(),
-                                               namedAttrs.data())));
+            return cls(mlirWaveHyperparameterAttrGet(mlirDictionaryAttrGet(
+                context, namedAttrs.size(), namedAttrs.data())));
           },
-          nb::arg("cls"), nb::arg("symbol_names"), nb::arg("resolved_values"),
+          nb::arg("cls"), nb::arg("symbol_dict"),
           nb::arg("context") = nb::none(),
           "Gets a wave.WaveHyperparameterAttr from parameters.");
 }

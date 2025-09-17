@@ -77,18 +77,17 @@ bool mlirAttributeIsAWaveHyperparameterAttr(MlirAttribute attr) {
   return llvm::isa<wave::WaveHyperparameterAttr>(unwrap(attr));
 }
 
-MlirAttribute mlirWaveHyperparameterAttrGet(MlirContext mlirCtx,
-                                            MlirAttribute mapping) {
-  mlir::MLIRContext *ctx = unwrap(mlirCtx);
-
+MlirAttribute mlirWaveHyperparameterAttrGet(MlirAttribute mapping) {
   auto dictAttr = llvm::cast<mlir::DictionaryAttr>(unwrap(mapping));
 
+  mlir::MLIRContext *ctx = dictAttr.getContext();
+
   assert(llvm::all_of(dictAttr,
-                      [](mlir::NamedAttribute namedAttr) {
+                      [](const mlir::NamedAttribute &namedAttr) {
                         return llvm::isa<mlir::IntegerAttr>(
                             namedAttr.getValue());
                       }) &&
-         "expected mapping to contain only integer value");
+         "expected mapping to contain only integer values");
 
   return wrap(wave::WaveHyperparameterAttr::get(ctx, dictAttr));
 }

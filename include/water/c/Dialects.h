@@ -60,7 +60,7 @@ mlirAttributeIsAWaveHyperparameterAttr(MlirAttribute attr);
 /// Creates a new WaveHyperparameterAttr with the given mapping from symbol
 /// names to their concrete integer values.
 MLIR_CAPI_EXPORTED MlirAttribute
-mlirWaveHyperparameterAttrGet(MlirContext mlirCtx, MlirAttribute mapping);
+mlirWaveHyperparameterAttrGet(MlirAttribute mapping);
 
 /// Returns the typeID of a WaveHyperparameterAttr.
 MLIR_CAPI_EXPORTED MlirTypeID mlirWaveHyperparameterAttrGetTypeID();

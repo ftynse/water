@@ -59,12 +59,26 @@ try:
             assert False, "Expected to fail with ValueError."
 
         # CHECK: #wave.hyperparameters<{A = 1 : i64, B = 2 : i64, C = 3 : i64}>
-        print(wave.WaveHyperparameterAttr.get(["A", "B", "C"], [1, 2, 3]))
+        print(wave.WaveHyperparameterAttr.get({"A": 1, "B": 2, "C": 3}))
 
         try:
-            wave.WaveHyperparameterAttr.get(["A"], [1, 2, 3])
+            wave.WaveHyperparameterAttr.get({"A": 1.0})
+        except TypeError as e:
+            assert "must be an integer" in str(e)
+        else:
+            assert False, "Expected to fail with TypeError."
+
+        try:
+            wave.WaveHyperparameterAttr.get({3: 1})
+        except TypeError as e:
+            assert "must be a string" in str(e)
+        else:
+            assert False, "Expected to fail with TypeError."
+
+        try:
+            wave.WaveHyperparameterAttr.get({"A": 10**100})
         except ValueError as e:
-            assert "co-indexed" in str(e)
+            assert "too large" in str(e)
         else:
             assert False, "Expected to fail with ValueError."
 
