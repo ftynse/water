@@ -190,6 +190,39 @@ def YieldOp : Op<WaveDialect, "yield",
 // Memory-related operations
 //-----------------------------------------------------------------------------
 
+def AllocateOp : WaveOp<"allocate"> {
+  let summary = "Represents an allocation in an address space";
+  let description = [{
+    Allocates memory for a Wave tensor in the address space indicated by the
+    result type, or creates a view into an existing parent buffer starting at
+    the specified 'offset' if the parent is specified.
+
+    The `distributed_shape` specifies the size of the data allocated in each
+    workgroup in terms of workgroup sizes. This allocation may be larger than a
+    slice of the overall tensor, i.e. be padded, at which point the additional
+    values in the allocation are not expected to be used and their value is
+    unspecified. This typically happens for bank conflict avoidance purposes.
+
+    TODO: actually verify that the distributed shape is larger and not *smaller*
+    than the total shape of the tensor. This can be done by restricting the
+    shape to only use block sizes and static offsets rather than arbitrarily
+    complex expressions.
+  }];
+  let arguments = !con((ins
+    Arg<Optional<WaveTensorType>, "Optional parent buffer to view into">:$parent,
+    Arg<WaveDistributedShapeAttr, "Distributed (physical) shape">:$distributed_shape,
+    Arg<OptionalAttr<I64Attr>, "Byte offset into parent buffer">:$offset
+  ), commonArguments);
+
+  let results = (outs Res<WaveTensorType,"Allocated buffer">:$result
+  );
+
+  let assemblyFormat =
+    " (`in` $parent^ `:` type($parent) `[` $offset `]`)? attr-dict `:` type($result)";
+
+  let hasVerifier = 1;
+}
+
 def ReadOp : WaveOp<"read", [
     WaveInferTypeOpInterface, IdentityTypeInferenceOpTrait,
     CompatibleOperandsAndResultsIgnoreSpaceOpTrait]> {
@@ -252,29 +285,6 @@ def WriteOp : WaveOp<"write", [
   let assemblyFormat =
     "$value_to_store `,` $memory " # commonArgumentsSyntax # "attr-dict `:`"
     "type($value_to_store) `,` type($memory)";
-}
-
-def AllocateOp : WaveOp<"allocate"> {
-  let summary = "Represents an allocation in an address space";
-  let description = [{
-    Allocates memory for a Wave tensor in the address space indicated by the
-    result type, or creates a view into an existing parent buffer starting at the specified 'offset'.
-    The `distributed_shape` specifies the physical layout of the allocation as affine expressions over named symbols (e.g., may include
-    padding).
-  }];
-  let arguments = !con((ins
-    Arg<Optional<WaveTensorType>, "Optional parent buffer to view into">:$parent,
-    Arg<WaveDistributedShapeAttr, "Distributed (physical) shape">:$distributed_shape,
-    Arg<OptionalAttr<I64Attr>, "Byte offset into parent buffer">:$offset
-  ), commonArguments);
-
-  let results = (outs Res<WaveTensorType,"Allocated buffer">:$result
-  );
-
-  let assemblyFormat =
-    " (`in` $parent^ `:` type($parent) `[` $offset `]`)? attr-dict `:` type($result)";
-
-  let hasVerifier = 1;
 }
 
 #endif // WATER_DIALECT_WAVE_WAVEOPS
