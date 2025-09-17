@@ -57,22 +57,7 @@ def WaveTensorType : TypeDef<WaveDialect, "WaveTensor"> {
     }
 
     // Return the resolved shape of the fully-specified tensor.
-    std::optional<llvm::SmallVector<int64_t>> getResolvedShape(wave::WaveHyperparameterAttr hyperparameter) {
-      // Return empty if not fully specified
-      if (!getFullySpecified()) {
-        return {};
-      }
-
-      llvm::SmallVector<int64_t> resolvedShape;
-
-      for (wave::WaveSymbolAttr symbol : getShape()) {
-        std::optional<int64_t> dim = hyperparameter.getSymbolValue(symbol.getName());
-        if (!dim) return std::nullopt;
-        resolvedShape.push_back(*dim);
-      }
-
-      return resolvedShape;
-    }
+    std::optional<llvm::SmallVector<int64_t>> getResolvedShape(wave::WaveHyperparameterAttr hyperparameter) const;
 
     // Return the address space.
     ::wave::WaveAddressSpace getAddressSpaceValue() const {

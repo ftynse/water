@@ -4,6 +4,7 @@ add_mlir_dialect_library(MLIRWaveDialect
   WaveInterfaces.cpp
   WaveOps.cpp
   WaveTypes.cpp
+  WaveUtils.cpp
 
   DEPENDS
   MLIRWaveIncGen

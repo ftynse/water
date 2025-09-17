@@ -8,6 +8,7 @@
 #include "water/Dialect/Wave/IR/WaveDialect.h"
 #include "water/Dialect/Wave/IR/WaveInterfaces.h"
 #include "water/Dialect/Wave/IR/WaveTypes.h"
+#include "water/Dialect/Wave/IR/WaveUtils.h"
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
@@ -170,46 +171,8 @@ bool WaveHyperparameterAttr::hasSymbol(StringRef symbolName) const {
 std::optional<llvm::SmallVector<int64_t>>
 wave::DistributedShapeAttr::getResolvedShape(
     wave::WaveHyperparameterAttr hyper) const {
-  if (!hyper)
-    return std::nullopt;
-
-  // Collect concrete values for each symbol in stored order.
-  llvm::SmallVector<int64_t> symVals;
-  symVals.reserve(getNumSymbols());
-  for (wave::WaveSymbolAttr symbol : getSymbolNames()) {
-    auto v = hyper.getSymbolValue(symbol.getName());
-    if (!v)
-      return std::nullopt;
-    symVals.push_back(*v);
-  }
-
-  // Build AffineExpr replacements for symbols: s_i → const(symVals[i]).
-  mlir::AffineMap map = getShape();
-  mlir::MLIRContext *context = map.getContext();
-  llvm::SmallVector<mlir::AffineExpr> symRepls;
-  symRepls.reserve(map.getNumSymbols());
-  for (unsigned i = 0; i < map.getNumSymbols(); ++i)
-    symRepls.push_back(mlir::getAffineConstantExpr(symVals[i], context));
-
-  // For each result expr: substitute symbols and fold
-  llvm::SmallVector<int64_t> out;
-  out.reserve(getRank());
-  for (mlir::AffineExpr affine : map.getResults()) {
-    mlir::AffineExpr substituted = affine.replaceSymbols(symRepls);
-    substituted =
-        mlir::simplifyAffineExpr(substituted, /*numDims=*/0, /*numSymbols=*/0);
-
-    // Check if we obtain a constant after substitution/folding and extract its
-    // value.
-    if (auto c = llvm::dyn_cast<mlir::AffineConstantExpr>(substituted)) {
-      if (c.getValue() < 0)
-        return std::nullopt; // optional sanity check
-      out.push_back(c.getValue());
-    } else {
-      return std::nullopt;
-    }
-  }
-  return out;
+  auto values = wave::resolveSymbolNames(getSymbolNames(), hyper);
+  return wave::evaluateMapWithSymbols(getShape(), *values);
 }
 
 Attribute DistributedShapeAttr::parse(AsmParser &parser, Type) {
