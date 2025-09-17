@@ -58,6 +58,16 @@ try:
         else:
             assert False, "Expected to fail with ValueError."
 
+        # CHECK: #wave.hyperparameters<{A = 1 : i64, B = 2 : i64, C = 3 : i64}>
+        print(wave.WaveHyperparameterAttr.get(["A", "B", "C"], [1, 2, 3]))
+
+        try:
+            wave.WaveHyperparameterAttr.get(["A"], [1, 2, 3])
+        except ValueError as e:
+            assert "co-indexed" in str(e)
+        else:
+            assert False, "Expected to fail with ValueError."
+
     # CHECK: wave_ok
     print("wave_ok")
 except Exception as e:

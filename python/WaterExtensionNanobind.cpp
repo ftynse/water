@@ -5,6 +5,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "mlir-c/AffineMap.h"
+#include "mlir-c/BuiltinAttributes.h"
+#include "mlir-c/BuiltinTypes.h"
 #include "mlir/Bindings/Python/Nanobind.h"
 #include "mlir/Bindings/Python/NanobindAdaptors.h"
 #include "water/c/Dialects.h"
@@ -94,4 +96,43 @@ NB_MODULE(_waterDialects, m) {
           nb::arg("cls"), nb::arg("symbol_names"), nb::arg("start"),
           nb::arg("step"), nb::arg("stride"), nb::arg("context") = nb::none(),
           "Gets a wave.WaveIndexMappingAttr from parameters.");
+
+  //===---------------------------------------------------------------------===//
+  // WaveHyperparameterAttr
+  //===---------------------------------------------------------------------===//
+
+  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
+      d, "WaveHyperparameterAttr", mlirAttributeIsAWaveHyperparameterAttr,
+      mlirWaveHyperparameterAttrGetTypeID)
+      .def_classmethod(
+          "get",
+          [](const nb::object &cls, const std::vector<std::string> &symbolNames,
+             const std::vector<int64_t> &resolvedValues,
+             // MlirContext should always come last to allow for being
+             // automatically deduced from context.
+             MlirContext context) {
+            std::vector<MlirNamedAttribute> namedAttrs;
+            if (symbolNames.size() != resolvedValues.size()) {
+              throw nb::value_error("Expected symbol_names and resolved_values"
+                                    "to be co-indexed.");
+            }
+            namedAttrs.reserve(symbolNames.size());
+
+            for (auto [symbolName, resolvedValue] :
+                 llvm::zip(symbolNames, resolvedValues)) {
+              namedAttrs.push_back(mlirNamedAttributeGet(
+                  mlirIdentifierGet(context,
+                                    mlirStringRefCreate(symbolName.data(),
+                                                        symbolName.size())),
+                  mlirIntegerAttrGet(mlirIntegerTypeGet(context, 64),
+                                     resolvedValue)));
+            }
+
+            return cls(mlirWaveHyperparameterAttrGet(
+                context, mlirDictionaryAttrGet(context, namedAttrs.size(),
+                                               namedAttrs.data())));
+          },
+          nb::arg("cls"), nb::arg("symbol_names"), nb::arg("resolved_values"),
+          nb::arg("context") = nb::none(),
+          "Gets a wave.WaveHyperparameterAttr from parameters.");
 }
