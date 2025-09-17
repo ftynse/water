@@ -7,7 +7,7 @@
 
 #include "water/Dialect/Wave/Transforms/LoweringPatterns.h"
 
-#include "mlir/Dialect/MemRef/IR/Memref.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "water/Dialect/Wave/IR/WaveOps.h"
 
