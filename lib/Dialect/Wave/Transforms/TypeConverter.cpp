@@ -50,76 +50,75 @@ wave::WaveTensorTypeConverter::WaveTensorTypeConverter() {
 
       // If this value comes from `wave.allocate`, resolve its distributed
       // (physical) shape
-      if (Operation *def = v.getDefiningOp()) {
-        if (auto alloc = llvm::dyn_cast<wave::AllocateOp>(def)) {
-          wave::DistributedShapeAttr dist = alloc.getDistributedShape();
-          shape = dist.getResolvedShape(hyperparameterAttr);
-        }
+      if (auto alloc = v.getDefiningOp(<wave::AllocateOp>())) {
+        wave::DistributedShapeAttr dist = alloc.getDistributedShape();
+        shape = dist.getResolvedShape(hyperparameterAttr);
       }
-      // Fallback: resolve from the WaveTensorType's own (symbolic) shape
-      if (!shape) {
-        shape = waveType.getResolvedShape(hyperparameterAttr);
-        // Fail if shapes aren't resolved.
-        if (shape == std::nullopt) {
-          LLVM_DEBUG({
-            DBGS() << "WaveTensorType conversion failed: symbolic shape "
-                      "unresolved\n";
-          });
-          return std::nullopt;
-        }
-      }
-      // Convert WaveTensorInRegister to VectorType, and WaveTensorInMemory to
-      // MemRefType with proper memory space.
-      wave::WaveAddressSpace addrSpace = waveType.getAddressSpaceValue();
-      Type elementType = waveType.getElementType();
-
-      switch (addrSpace) {
-      case wave::WaveAddressSpace::Unspecified:
-        LLVM_DEBUG(DBGS() << "address spaces must have been specified\n");
+    }
+    // Fallback: resolve from the WaveTensorType's own (symbolic) shape
+    if (!shape) {
+      shape = waveType.getResolvedShape(hyperparameterAttr);
+      // Fail if shapes aren't resolved.
+      if (shape == std::nullopt) {
+        LLVM_DEBUG({
+          DBGS() << "WaveTensorType conversion failed: symbolic shape "
+                    "unresolved\n";
+        });
         return std::nullopt;
-
-      case wave::WaveAddressSpace::Global: {
-        // GPU global memory (device memory)
-        auto globalMemoryAddressSpace = gpu::AddressSpaceAttr::get(
-            elementType.getContext(), gpu::AddressSpace::Global);
-        return MemRefType::get(*shape, elementType,
-                               /*layout=*/MemRefLayoutAttrInterface{},
-                               Attribute(globalMemoryAddressSpace));
       }
+    }
+    // Convert WaveTensorInRegister to VectorType, and WaveTensorInMemory to
+    // MemRefType with proper memory space.
+    wave::WaveAddressSpace addrSpace = waveType.getAddressSpaceValue();
+    Type elementType = waveType.getElementType();
 
-      case wave::WaveAddressSpace::Shared: {
-        // GPU shared memory
-        auto workgroupMemoryAddressSpace = gpu::AddressSpaceAttr::get(
-            elementType.getContext(), gpu::AddressSpace::Workgroup);
-        return MemRefType::get(*shape, elementType,
-                               /*layout=*/MemRefLayoutAttrInterface{},
-                               Attribute(workgroupMemoryAddressSpace));
-      }
+    switch (addrSpace) {
+    case wave::WaveAddressSpace::Unspecified:
+      LLVM_DEBUG(DBGS() << "address spaces must have been specified\n");
+      return std::nullopt;
 
-      case wave::WaveAddressSpace::Register:
-        // For register space, use vector type (registers are handled by LLVM)
-        return VectorType::get(*shape, elementType);
-      }
+    case wave::WaveAddressSpace::Global: {
+      // GPU global memory (device memory)
+      auto globalMemoryAddressSpace = gpu::AddressSpaceAttr::get(
+          elementType.getContext(), gpu::AddressSpace::Global);
+      return MemRefType::get(*shape, elementType,
+                             /*layout=*/MemRefLayoutAttrInterface{},
+                             Attribute(globalMemoryAddressSpace));
+    }
+
+    case wave::WaveAddressSpace::Shared: {
+      // GPU shared memory
+      auto workgroupMemoryAddressSpace = gpu::AddressSpaceAttr::get(
+          elementType.getContext(), gpu::AddressSpace::Workgroup);
+      return MemRefType::get(*shape, elementType,
+                             /*layout=*/MemRefLayoutAttrInterface{},
+                             Attribute(workgroupMemoryAddressSpace));
+    }
+
+    case wave::WaveAddressSpace::Register:
+      // For register space, use vector type (registers are handled by LLVM)
+      return VectorType::get(*shape, elementType);
+    }
     }
     // Mark all other types as legal.
     return type;
-  });
+});
 
-  addSourceMaterialization([](OpBuilder &builder, wave::WaveTensorType waveType,
-                              ValueRange inputs, Location loc) -> Value {
-    if (inputs.size() != 1)
-      return Value();
+addSourceMaterialization([](OpBuilder &builder, wave::WaveTensorType waveType,
+                            ValueRange inputs, Location loc) -> Value {
+  if (inputs.size() != 1)
+    return Value();
 
-    return UnrealizedConversionCastOp::create(builder, loc, waveType, inputs)
-        .getResult(0);
-  });
+  return UnrealizedConversionCastOp::create(builder, loc, waveType, inputs)
+      .getResult(0);
+});
 
-  addTargetMaterialization([](OpBuilder &builder, Type type, ValueRange inputs,
-                              Location loc) -> Value {
-    if (inputs.size() != 1)
-      return Value();
+addTargetMaterialization([](OpBuilder &builder, Type type, ValueRange inputs,
+                            Location loc) -> Value {
+  if (inputs.size() != 1)
+    return Value();
 
-    return UnrealizedConversionCastOp::create(builder, loc, type, inputs)
-        .getResult(0);
-  });
+  return UnrealizedConversionCastOp::create(builder, loc, type, inputs)
+      .getResult(0);
+});
 }
