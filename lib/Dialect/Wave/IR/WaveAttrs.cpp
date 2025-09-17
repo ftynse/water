@@ -275,7 +275,7 @@ Attribute DistributedShapeAttr::parse(AsmParser &parser, Type) {
 
 void DistributedShapeAttr::print(mlir::AsmPrinter &printer) const {
   // Print symbol names like: [M, K] -> ( ... )
-  printer << "[";
+  printer << "<[";
   llvm::SmallVector<llvm::StringRef> names;
   names.reserve(getSymbolNames().size());
   llvm::interleaveComma(getSymbolNames(), printer.getStream(),
@@ -297,7 +297,7 @@ void DistributedShapeAttr::print(mlir::AsmPrinter &printer) const {
                              /*results=*/full.getResult(i), full.getContext());
     printer << stringifyWithNames(one, names);
   }
-  printer << ")";
+  printer << ")>";
 }
 
 void wave::WaveDialect::registerAttributes() {
