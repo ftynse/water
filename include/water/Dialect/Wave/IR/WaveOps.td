@@ -9,7 +9,6 @@ include "water/Dialect/Wave/IR/WaveDialect.td"
 include "water/Dialect/Wave/IR/WaveInterfaces.td"
 include "water/Dialect/Wave/IR/WaveTypes.td"
 include "mlir/IR/OpBase.td"
-include "water/Dialect/Wave/IR/WaveInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/IR/CommonAttrConstraints.td"
 include "mlir/IR/BuiltinAttributeInterfaces.td"
@@ -217,7 +216,7 @@ def AllocateOp : WaveOp<"allocate"> {
   );
 
   let assemblyFormat =
-    " (`in` $parent^ `:` type($parent) `[` $offset `]`)? attr-dict `:` type($result)";
+    " (`in` $parent^ `:` type($parent))? attr-dict `:` type($result)";
 
   let hasVerifier = 1;
 }

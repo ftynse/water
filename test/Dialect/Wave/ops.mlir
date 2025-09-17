@@ -127,8 +127,8 @@ func.func @allocate() -> !wave.tensor<[@M, @N] of bf16, <shared>> {
   %parent = wave.allocate { distributed_shape = #wave.distributed_shape<[BLOCK_M, BLOCK_K] -> (BLOCK_M, BLOCK_K + 4)> }
     : !wave.tensor<[@M, @N] of bf16, <shared>>
 
-  %buf = wave.allocate in %parent : !wave.tensor<[@M, @N] of bf16, <shared>> [64]
-    { distributed_shape = #wave.distributed_shape<[BLOCK_M, BLOCK_K] -> (BLOCK_M, BLOCK_K + 4)> }
+  %buf = wave.allocate in %parent : !wave.tensor<[@M, @N] of bf16, <shared>>
+    { distributed_shape = #wave.distributed_shape<[BLOCK_M, BLOCK_K] -> (BLOCK_M, BLOCK_K + 4)>, offset = 64 }
     : !wave.tensor<[@M, @N] of bf16, <shared>>
 
   return %buf : !wave.tensor<[@M, @N] of bf16, <shared>>
