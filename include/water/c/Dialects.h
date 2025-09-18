@@ -49,6 +49,22 @@ MLIR_CAPI_EXPORTED MlirAttribute mlirWaveIndexMappingAttrGet(
 /// Returns the typeID of a WaveIndexMappingAttr.
 MLIR_CAPI_EXPORTED MlirTypeID mlirWaveIndexMappingAttrGetTypeID();
 
+//===---------------------------------------------------------------------===//
+// WaveHyperparameterAttr
+//===---------------------------------------------------------------------===//
+
+/// Checks whether the given MLIR attribute is a WaveHyperparameterAttr.
+MLIR_CAPI_EXPORTED bool
+mlirAttributeIsAWaveHyperparameterAttr(MlirAttribute attr);
+
+/// Creates a new WaveHyperparameterAttr with the given mapping from symbol
+/// names to their concrete integer values.
+MLIR_CAPI_EXPORTED MlirAttribute
+mlirWaveHyperparameterAttrGet(MlirAttribute mapping);
+
+/// Returns the typeID of a WaveHyperparameterAttr.
+MLIR_CAPI_EXPORTED MlirTypeID mlirWaveHyperparameterAttrGetTypeID();
+
 #ifdef __cplusplus
 }
 #endif

@@ -68,3 +68,30 @@ MlirAttribute mlirWaveIndexMappingAttrGet(MlirContext mlirCtx,
 MlirTypeID mlirWaveIndexMappingAttrGetTypeID() {
   return wrap(mlir::TypeID::get<wave::WaveIndexMappingAttr>());
 }
+
+//===---------------------------------------------------------------------===//
+// WaveHyperparameterAttr
+//===---------------------------------------------------------------------===//
+
+bool mlirAttributeIsAWaveHyperparameterAttr(MlirAttribute attr) {
+  return llvm::isa<wave::WaveHyperparameterAttr>(unwrap(attr));
+}
+
+MlirAttribute mlirWaveHyperparameterAttrGet(MlirAttribute mapping) {
+  auto dictAttr = llvm::cast<mlir::DictionaryAttr>(unwrap(mapping));
+
+  mlir::MLIRContext *ctx = dictAttr.getContext();
+
+  assert(llvm::all_of(dictAttr,
+                      [](const mlir::NamedAttribute &namedAttr) {
+                        return llvm::isa<mlir::IntegerAttr>(
+                            namedAttr.getValue());
+                      }) &&
+         "expected mapping to contain only integer values");
+
+  return wrap(wave::WaveHyperparameterAttr::get(ctx, dictAttr));
+}
+
+MlirTypeID mlirWaveHyperparameterAttrGetTypeID() {
+  return wrap(mlir::TypeID::get<wave::WaveHyperparameterAttr>());
+}
