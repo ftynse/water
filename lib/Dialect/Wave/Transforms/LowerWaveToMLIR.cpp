@@ -9,6 +9,7 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Pass/Pass.h"
@@ -28,6 +29,11 @@ struct LowerWaveToMLIRPass
     : public ::impl::LowerWaveToMLIRPassBase<LowerWaveToMLIRPass> {
   using LowerWaveToMLIRPassBase::LowerWaveToMLIRPassBase;
 
+  void getDependentDialects(mlir::DialectRegistry &registry) const override {
+    registry.insert<mlir::gpu::GPUDialect, mlir::memref::MemRefDialect,
+                    mlir::arith::ArithDialect>();
+  }
+
   void runOnOperation() override {
     MLIRContext *ctx = &getContext();
     Operation *op = getOperation();
@@ -41,7 +47,7 @@ struct LowerWaveToMLIRPass
     ConversionTarget target(*ctx);
 
     target.addLegalDialect<arith::ArithDialect, vector::VectorDialect,
-                           memref::MemRefDialect>();
+                           memref::MemRefDialect, gpu::GPUDialect>();
     target.addIllegalOp<wave::RegisterOp, wave::AllocateOp>();
 
     RewritePatternSet patterns(ctx);

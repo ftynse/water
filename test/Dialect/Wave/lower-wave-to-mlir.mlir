@@ -139,3 +139,20 @@ module attributes {wave.normal_form = #wave.normal_form<full_types>} {
     return
   }
 }
+
+// -----
+
+// CHECK-LABEL: func.func @lower_alloc
+func.func @lower_alloc() attributes {wave.hyperparameters = #wave.hyperparameters<{X= 256, BLOCK_M = 4, BLOCK_K = 28, M = 128, N=128, K= 128}>}  {
+  // CHECK: %[[BUFF:.*]] = memref.alloc() : memref<256xi8, #gpu.address_space<workgroup>>
+  %parent = wave.allocate { distributed_shape = #wave.distributed_shape<[X] -> (X)> }
+    : !wave.tensor<[@M, @N, @K] of i8, <shared>>
+
+  // CHECK: %[[OFF:.*]] = arith.constant 128 : index
+  // CHECK: %[[VIEW:.*]] = memref.view %[[BUFF]][%[[OFF]]][]
+  // CHECK-SAME: : memref<256xi8, #gpu.address_space<workgroup>> to memref<4x32xbf16, #gpu.address_space<workgroup>>
+  %buf = wave.allocate in %parent : !wave.tensor<[@M,@N,@K] of i8, <shared>>
+    { distributed_shape = #wave.distributed_shape<[BLOCK_M, BLOCK_K] -> (BLOCK_M, BLOCK_K + 4)>, offset = 128 }
+    : !wave.tensor<[@M, @N] of bf16, <shared>>
+  return
+}
