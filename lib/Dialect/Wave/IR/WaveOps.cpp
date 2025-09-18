@@ -302,20 +302,3 @@ mlir::MutableOperandRange
 wave::YieldOp::getMutableSuccessorOperands(mlir::RegionBranchPoint) {
   return getValuesMutable();
 }
-
-//-----------------------------------------------------------------------------
-// AllocateOp
-//-----------------------------------------------------------------------------
-mlir::LogicalResult wave::AllocateOp::verify() {
-  auto resultTy = llvm::cast<wave::WaveTensorType>(getResult().getType());
-  wave::DistributedShapeAttr dist = getDistributedShape();
-  if (resultTy.getFullySpecified()) {
-    unsigned resultRank = resultTy.getRank();
-    unsigned distRank = dist.getRank();
-    if (distRank != resultRank)
-      return emitOpError() << "'distributed_shape' rank (" << distRank
-                           << ") must equal 'resulting shape' rank ("
-                           << resultRank << ")";
-  }
-  return mlir::success();
-}

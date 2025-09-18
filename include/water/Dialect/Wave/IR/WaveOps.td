@@ -217,8 +217,6 @@ def AllocateOp : WaveOp<"allocate"> {
 
   let assemblyFormat =
     " (`in` $parent^ `:` type($parent))? attr-dict `:` type($result)";
-
-  let hasVerifier = 1;
 }
 
 def ReadOp : WaveOp<"read", [
