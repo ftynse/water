@@ -192,7 +192,7 @@ def AllocateOp : WaveOp<"allocate"> {
   let summary = "Represents an allocation in an address space";
   let description = [{
     Allocates memory for a Wave tensor in the address space indicated by the
-    result type, or creates a view into an existing parent buffer starting at
+    logical WaveTensorType attribute, or creates a view into an existing parent buffer starting at
     the specified 'offset' if the parent is specified.
 
     The `distributed_shape` specifies the size of the data allocated in each
@@ -207,6 +207,7 @@ def AllocateOp : WaveOp<"allocate"> {
     complex expressions.
   }];
   let arguments = !con((ins
+    Arg<TypeAttrOf<WaveTensorType>, "Logical tensor allocated">:$logical,
     Arg<Optional<WaveTensorType>, "Optional parent buffer to view into">:$parent,
     Arg<WaveDistributedShapeAttr, "Distributed (physical) shape">:$distributed_shape,
     Arg<OptionalAttr<I64Attr>, "Byte offset into parent buffer">:$offset
