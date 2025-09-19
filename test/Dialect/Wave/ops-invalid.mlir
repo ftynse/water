@@ -142,7 +142,7 @@ func.func @mismatch_shape_write(%lhs: !wave.tensor<[@A, @B] of f32, <register>>,
 // -----
 
 
-func.func @empty_distributed_shape() attributes {wave.hyperparameters = #wave.hyperparameters<{}>}  {
+func.func @empty_distributed_shape() {
   // expected-error @below {{distributed shape must have at least one dimension}}
   %buf = wave.allocate { distributed_shape = #wave.distributed_shape<[BLOCK_M, BLOCK_K] -> ()>}
     : !wave.tensor<[@M, @K] of bf16, <shared>>
@@ -150,7 +150,7 @@ func.func @empty_distributed_shape() attributes {wave.hyperparameters = #wave.hy
 
 // -----
 
-func.func @alloc_offset_no_parent() attributes {wave.hyperparameters = #wave.hyperparameters<{}>}  {
+func.func @alloc_offset_no_parent() {
   // expected-error @below {{expects parent and offset to be present simultaneously}}
   %buf = wave.allocate { distributed_shape = #wave.distributed_shape<[] -> (42)>, offset = 42}
     : !wave.tensor<[@M, @K] of bf16, <shared>>
@@ -172,4 +172,38 @@ module attributes { wave.hyperparameters = #wave.hyperparameters<{}> } {
   // expected-error @below {{defines hyperparameters when its ancestor already had}}
   // expected-note @above {{ancestor}}
   module attributes { wave.hyperparameters = #wave.hyperparameters<{}> } {}
+}
+
+// -----
+
+module attributes { wave.hyperparameters = #wave.hyperparameters<{A = 42, C = 43}> } {
+  // expected-error @below {{region #0 block #0 argument type #0 uses symbolic value #wave.symbol<"B"> not provided as a hyperparameter}}
+  // expected-note @below {{available symbols: A, C}}
+  // expected-note @below {{NYI support for symbol lowering}}
+  func.func @missing_hyperparam_func(%arg0: !wave.tensor<[@B] of f32>) {
+    return
+  }
+}
+
+
+// -----
+
+module attributes { wave.hyperparameters = #wave.hyperparameters<{A = 42, C = 43}> } {
+  func.func @missing_hyperparam_result(%arg0: !wave.tensor<any of f32>) {
+    // expected-error @below {{result type #0 uses symbolic value #wave.symbol<"B"> not provided as a hyperparameter}}
+    // expected-note @below {{available symbols: A, C}}
+    // expected-note @below {{NYI support for symbol lowering}}
+    wave.add %arg0, %arg0 : (!wave.tensor<any of f32>, !wave.tensor<any of f32>) -> !wave.tensor<[@B] of f32>
+    return
+  }
+}
+
+// -----
+
+// expected-warning @below {{unused hyperparameter: C}}
+module attributes { wave.hyperparameters = #wave.hyperparameters<{A = 42, C = 43}> } {
+  func.func @missing_hyperparam_result(%arg0: !wave.tensor<any of f32>) {
+    wave.add %arg0, %arg0 : (!wave.tensor<any of f32>, !wave.tensor<any of f32>) -> !wave.tensor<[@A] of f32>
+    return
+  }
 }
