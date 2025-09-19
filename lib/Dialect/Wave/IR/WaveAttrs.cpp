@@ -170,13 +170,12 @@ void wave::WaveDialect::registerAttributes() {
       >();
 }
 
-// Verify that all types in the range satisfy the required normal forms. Emit a
+// Verify that wave tensor types in the given range are fully specified. Emit a
 // diagnostic with the given message at the location provided, if present,
 // otherwise just return failure.
 static llvm::LogicalResult
-verifyNormalFormTypeRange(std::optional<mlir::Location> loc,
-                          mlir::TypeRange types, wave::WaveNormalForm form,
-                          llvm::StringRef message) {
+verifyTypesFullySpecified(std::optional<mlir::Location> loc,
+                          mlir::TypeRange types, llvm::StringRef message) {
   for (mlir::Type type : types) {
     auto tensorType = llvm::dyn_cast<wave::WaveTensorType>(type);
     if (!tensorType || tensorType.getFullySpecified())
@@ -209,11 +208,11 @@ llvm::LogicalResult wave::detail::verifyNormalFormAttr(
             const llvm::StringLiteral kMessage =
                 "normal form requires tensor types to be fully specified at "
                 "function boundaries";
-            if (llvm::failed(verifyNormalFormTypeRange(
-                    optionalLoc, func.getArgumentTypes(), form, kMessage)))
+            if (llvm::failed(verifyTypesFullySpecified(
+                    optionalLoc, func.getArgumentTypes(), kMessage)))
               return mlir::WalkResult::interrupt();
-            if (llvm::failed(verifyNormalFormTypeRange(
-                    optionalLoc, func->getResultTypes(), form, kMessage)))
+            if (llvm::failed(verifyTypesFullySpecified(
+                    optionalLoc, func->getResultTypes(), kMessage)))
               return mlir::WalkResult::interrupt();
           }
         }
@@ -222,16 +221,16 @@ llvm::LogicalResult wave::detail::verifyNormalFormAttr(
                                      wave::WaveNormalForm::OpTypesSpecified)) {
           const llvm::StringLiteral kMessage =
               "normal form requires tensor types to be fully specified";
-          if (llvm::failed(verifyNormalFormTypeRange(
-                  optionalLoc, op->getOperandTypes(), form, kMessage)))
+          if (llvm::failed(verifyTypesFullySpecified(
+                  optionalLoc, op->getOperandTypes(), kMessage)))
             return mlir::WalkResult::interrupt();
-          if (llvm::failed(verifyNormalFormTypeRange(
-                  optionalLoc, op->getResultTypes(), form, kMessage)))
+          if (llvm::failed(verifyTypesFullySpecified(
+                  optionalLoc, op->getResultTypes(), kMessage)))
             return mlir::WalkResult::interrupt();
           for (mlir::Region &region : op->getRegions()) {
             for (mlir::Block &block : region) {
-              if (llvm::failed(verifyNormalFormTypeRange(
-                      optionalLoc, block.getArgumentTypes(), form, kMessage)))
+              if (llvm::failed(verifyTypesFullySpecified(
+                      optionalLoc, block.getArgumentTypes(), kMessage)))
                 return mlir::WalkResult::interrupt();
             }
           }

@@ -17,7 +17,7 @@ def WaveDialect : Dialect {
     Passes on the Wave dialect follow the concept of normal forms. A module
     containing Wave dialect operations may satisfy conditions of several normal
     forms defined by the `WaveNormalFormAttr`. When this is the case, the module
-    (or some its ancestor), is expected to have the corresponding attribute
+    (or one of its ancestors), is expected to have the corresponding attribute
     attached. The attribute enforces normal form invariants in its verifiers.
     Passes can then check whether the attribute is present as a precondition for
     them to run, i.e., only apply to IR in certain normal forms. Passes may also
