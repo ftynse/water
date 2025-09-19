@@ -7,6 +7,7 @@
 #include "water/Dialect/Wave/IR/WaveTypes.h"
 #include "water/Dialect/Wave/IR/WaveAttrs.h"
 #include "water/Dialect/Wave/IR/WaveDialect.h"
+#include "water/Dialect/Wave/IR/WaveUtils.h"
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
@@ -79,4 +80,13 @@ mlir::LogicalResult wave::WaveTensorType::verify(
                           "floating point scalar";
   }
   return mlir::success();
+}
+
+std::optional<llvm::SmallVector<int64_t>>
+wave::WaveTensorType::getResolvedShape(
+    wave::WaveHyperparameterAttr hyper) const {
+  if (!getFullySpecified()) {
+    return {};
+  }
+  return wave::resolveSymbolNames(getShape(), hyper);
 }

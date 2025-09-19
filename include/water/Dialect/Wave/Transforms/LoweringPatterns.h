@@ -12,8 +12,19 @@
 
 namespace wave {
 
+enum class WaveAddressSpace : uint32_t;
+class WaveHyperparameterAttr;
+class WaveSymbolAttr;
+
 struct WaveTensorTypeConverter : public mlir::TypeConverter {
   WaveTensorTypeConverter();
+
+  mlir::Type convertTensorFromComponents(
+      llvm::ArrayRef<wave::WaveSymbolAttr> symbols, mlir::AffineMap shape,
+      mlir::Type elementType, wave::WaveAddressSpace addressSpace,
+      wave::WaveHyperparameterAttr hyperParameters) const;
+
+  wave::WaveHyperparameterAttr getHyperparametersAt(mlir::Value value) const;
 };
 
 // Adds pattern that lowers `wave.register` to upstream MLIR ops.
@@ -22,6 +33,10 @@ void populateWaveRegisterLoweringPatterns(
 
 // Adds pattern that lowers wave binary ops to upstream MLIR ops.
 void populateWaveBinaryOpLoweringPatterns(
+    WaveTensorTypeConverter &typeConverter, mlir::RewritePatternSet &patterns);
+
+// Adds pattern that lowers 'wave.allocate' ops to upstream MLIR ops.
+void populateWaveAllocateOpLoweringPatterns(
     WaveTensorTypeConverter &typeConverter, mlir::RewritePatternSet &patterns);
 
 } // namespace wave

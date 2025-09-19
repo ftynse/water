@@ -17,7 +17,8 @@ def LowerWaveToMLIRPass : Pass<"lower-wave-to-mlir"> {
   }];
   let dependentDialects = [
     "::mlir::arith::ArithDialect",
-    "::mlir::vector::VectorDialect"
+    "::mlir::vector::VectorDialect",
+    "::mlir::memref::MemRefDialect",
   ];
 }
 

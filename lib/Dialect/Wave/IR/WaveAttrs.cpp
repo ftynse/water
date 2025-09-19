@@ -8,6 +8,7 @@
 #include "water/Dialect/Wave/IR/WaveDialect.h"
 #include "water/Dialect/Wave/IR/WaveInterfaces.h"
 #include "water/Dialect/Wave/IR/WaveTypes.h"
+#include "water/Dialect/Wave/IR/WaveUtils.h"
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
@@ -28,6 +29,36 @@ using namespace wave;
 //===----------------------------------------------------------------------===//
 // WaveIndexMappingAttr
 //===----------------------------------------------------------------------===//
+
+// Helper function to render an affine map result to a string.
+// It textually substitutes 's<i>' occurrences with the corresponding names from
+// the provided `names` array.
+std::string stringifyWithNames(AffineMap map, ArrayRef<StringRef> names) {
+  AffineExpr expr = map.getResult(0);
+  std::string exprStr;
+  llvm::raw_string_ostream os(exprStr);
+  expr.print(os);
+  os.flush();
+  for (auto [i, nm] : llvm::enumerate(names)) {
+    std::string pattern = "s" + std::to_string(i);
+    size_t pos = 0;
+    while ((pos = exprStr.find(pattern, pos)) != std::string::npos) {
+      // Replace only when 'pattern' is a complete token (not embedded
+      // inside a longer identifier or number). We approximate token
+      // boundaries by checking that adjacent characters are non-alphanumeric.
+      bool isWhole = (pos == 0 || !std::isalnum(exprStr[pos - 1])) &&
+                     (pos + pattern.length() == exprStr.length() ||
+                      !std::isalnum(exprStr[pos + pattern.length()]));
+      if (isWhole) {
+        exprStr.replace(pos, pattern.length(), nm.str());
+        pos += nm.size();
+      } else {
+        pos += pattern.length();
+      }
+    }
+  }
+  return exprStr;
+}
 
 Attribute WaveIndexMappingAttr::parse(AsmParser &parser, Type type) {
   // Parse custom syntax: '[' symbol-names ']' '->' '(' start, step, stride ')'
@@ -103,36 +134,6 @@ void WaveIndexMappingAttr::print(AsmPrinter &printer) const {
                         [&](WaveSymbolAttr s) { printer << s.getName(); });
   printer << "] -> ";
 
-  // Helper: render an affine map result to a string, then textual-substitute
-  // s<i> occurrences with the corresponding symbol_names[i].
-  auto stringifyWithNames = [&](AffineMap map,
-                                ArrayRef<StringRef> names) -> std::string {
-    AffineExpr expr = map.getResult(0);
-    std::string exprStr;
-    llvm::raw_string_ostream os(exprStr);
-    expr.print(os);
-    os.flush();
-    for (auto [i, nm] : llvm::enumerate(names)) {
-      std::string pattern = "s" + std::to_string(i);
-      size_t pos = 0;
-      while ((pos = exprStr.find(pattern, pos)) != std::string::npos) {
-        // Replace only when 'pattern' is a complete token (not embedded
-        // inside a longer identifier or number). We approximate token
-        // boundaries by checking that adjacent characters are non-alphanumeric.
-        bool isWhole = (pos == 0 || !std::isalnum(exprStr[pos - 1])) &&
-                       (pos + pattern.length() == exprStr.length() ||
-                        !std::isalnum(exprStr[pos + pattern.length()]));
-        if (isWhole) {
-          exprStr.replace(pos, pattern.length(), nm.str());
-          pos += nm.size();
-        } else {
-          pos += pattern.length();
-        }
-      }
-    }
-    return exprStr;
-  };
-
   SmallVector<StringRef> allNames = getAllSymbolNames();
   // All three maps share the same symbol set and order.
   std::string startStr = stringifyWithNames(getStart(), allNames);
@@ -161,6 +162,108 @@ WaveHyperparameterAttr::getSymbolValue(StringRef symbolName) const {
 
 bool WaveHyperparameterAttr::hasSymbol(StringRef symbolName) const {
   return getMapping().get(symbolName) != nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// WaveDistributedShapeAttr
+//===----------------------------------------------------------------------===//
+
+std::optional<llvm::SmallVector<int64_t>>
+wave::DistributedShapeAttr::getResolvedShape(
+    wave::WaveHyperparameterAttr hyper) const {
+  std::optional<SmallVector<int64_t>> values =
+      wave::resolveSymbolNames(getSymbolNames(), hyper);
+  if (!values)
+    return std::nullopt;
+  return wave::evaluateMapWithSymbols(getShape(), *values);
+}
+
+Attribute DistributedShapeAttr::parse(AsmParser &parser, Type) {
+  if (parser.parseLess())
+    return {};
+
+  SmallVector<WaveSymbolAttr> symbolNameAttrs;
+  SmallVector<StringRef> symbolNames;
+
+  auto parseSymbol = [&]() -> ParseResult {
+    StringRef symbolName;
+    if (failed(parser.parseKeyword(&symbolName)))
+      return failure();
+    symbolNameAttrs.push_back(
+        WaveSymbolAttr::get(parser.getContext(), symbolName));
+    symbolNames.push_back(symbolName);
+    return success();
+  };
+
+  // Parse '[' symbol-names ']' allowing empty or non-empty lists.
+  if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, parseSymbol))
+    return {};
+
+  // Parse: '->' '(' expr (',' expr)* ')'
+  if (parser.parseArrow())
+    return {};
+  MLIRContext *context = parser.getContext();
+
+  // Helper to parse an affine expr where symbols are named by `names`.
+  auto parseExprWithNames = [&](AffineExpr &outExpr) -> ParseResult {
+    SmallVector<std::pair<StringRef, AffineExpr>> symbolSet;
+    symbolSet.reserve(symbolNames.size());
+    for (auto [i, nm] : llvm::enumerate(symbolNames))
+      symbolSet.emplace_back(nm, getAffineSymbolExpr(i, context));
+    return parser.parseAffineExpr(symbolSet, outExpr);
+  };
+
+  SmallVector<AffineExpr> results;
+  auto parseOneExpr = [&]() -> ParseResult {
+    AffineExpr e;
+    if (failed(parseExprWithNames(e)))
+      return failure();
+    results.push_back(e);
+    return success();
+  };
+  if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parseOneExpr))
+    return {};
+
+  if (results.empty()) {
+    parser.emitError(parser.getCurrentLocation(),
+                     "distributed shape must have at least one dimension");
+    return {};
+  }
+  if (parser.parseGreater())
+    return {};
+
+  // Build a single map with all result expressions.
+  auto shape = AffineMap::get(/*numDims=*/0, /*numSymbols=*/symbolNames.size(),
+                              results, context);
+
+  return get(parser.getContext(), symbolNameAttrs, shape);
+}
+
+void DistributedShapeAttr::print(mlir::AsmPrinter &printer) const {
+  // Print symbol names like: [M, K] -> ( ... )
+  printer << "<[";
+  llvm::SmallVector<llvm::StringRef> names;
+  names.reserve(getSymbolNames().size());
+  llvm::interleaveComma(getSymbolNames(), printer.getStream(),
+                        [&](wave::WaveSymbolAttr s) {
+                          names.push_back(s.getName());
+                          printer << s.getName();
+                        });
+  printer << "] -> (";
+
+  // We have one map with N results. For each result expr, make a 1-result map
+  // so we can reuse the identical stringifyWithNames(map,names) helper.
+  mlir::AffineMap full = getShape(); // your stored map
+  for (unsigned i = 0, e = full.getNumResults(); i < e; ++i) {
+    if (i)
+      printer << ", ";
+    mlir::AffineMap one =
+        mlir::AffineMap::get(/*numDims=*/0,
+                             /*numSymbols=*/full.getNumSymbols(),
+                             /*results=*/full.getResult(i), full.getContext());
+    printer << stringifyWithNames(one, names);
+  }
+  printer << ")>";
 }
 
 void wave::WaveDialect::registerAttributes() {

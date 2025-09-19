@@ -139,3 +139,36 @@ module attributes {wave.normal_form = #wave.normal_form<full_types>} {
     return
   }
 }
+
+// -----
+
+module attributes {wave.normal_form = #wave.normal_form<full_types>} {
+// CHECK-LABEL: func.func @lower_alloc_view
+func.func @lower_alloc_view() attributes {wave.hyperparameters = #wave.hyperparameters<{BLOCK_M = 4, BLOCK_K = 28, M = 128, N=128, K= 128}>}  {
+  // CHECK: %[[BUFF:.*]] = memref.alloc() : memref<256xi8, #gpu.address_space<workgroup>>
+  %parent = wave.allocate { distributed_shape = #wave.distributed_shape<[] -> (256)> }
+    : !wave.tensor<[@M,@N,@K] of i8, <shared>>
+
+  // CHECK: %[[OFF:.*]] = arith.constant 128 : index
+  // CHECK: %[[VIEW:.*]] = memref.view %[[BUFF]][%[[OFF]]][]
+  // CHECK-SAME: : memref<256xi8, #gpu.address_space<workgroup>> to memref<4x32xbf16, #gpu.address_space<workgroup>>
+  %buf = wave.allocate in %parent : !wave.tensor<[@M,@N,@K] of i8, <shared>>
+    { distributed_shape = #wave.distributed_shape<[BLOCK_M, BLOCK_K] -> (BLOCK_M, BLOCK_K + 4)>, offset = 128}
+    : !wave.tensor<[@M, @K] of bf16, <shared>>
+  return
+  }
+}
+
+// -----
+
+module attributes {wave.normal_form = #wave.normal_form<full_types>} {
+// CHECK-LABEL: @lower_alloc
+func.func @lower_alloc() attributes {wave.hyperparameters = #wave.hyperparameters<{BLOCK_M = 4, BLOCK_K = 28, M = 128, N=128, K= 128}>}  {
+  // CHECK: memref.alloc() : memref<4x32xbf16, #gpu.address_space<workgroup>>
+  %buf = wave.allocate
+    { distributed_shape = #wave.distributed_shape<[BLOCK_M, BLOCK_K] -> (BLOCK_M, BLOCK_K + 4)>}
+    : !wave.tensor<[@M, @K] of bf16, <shared>>
+  wave.read %buf : (!wave.tensor<[@M, @K] of bf16, <shared>>) -> !wave.tensor<[@M, @K] of bf16, <register>>
+  return
+  }
+}

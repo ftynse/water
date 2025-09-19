@@ -138,3 +138,30 @@ func.func @mismatch_shape_write(%lhs: !wave.tensor<[@A, @B] of f32, <register>>,
   // expected-error @below {{expected operand #1 dimension #0 (#wave.symbol<"B">) to match operand #0 dimension #0 (#wave.symbol<"A">)}}
   wave.write %lhs, %rhs : !wave.tensor<[@A, @B] of f32, <register>>, !wave.tensor<[@B, @C] of f32, <global>>
 }
+
+// -----
+
+
+func.func @empty_distributed_shape() attributes {wave.hyperparameters = #wave.hyperparameters<{}>}  {
+  // expected-error @below {{distributed shape must have at least one dimension}}
+  %buf = wave.allocate { distributed_shape = #wave.distributed_shape<[BLOCK_M, BLOCK_K] -> ()>}
+    : !wave.tensor<[@M, @K] of bf16, <shared>>
+}
+
+// -----
+
+func.func @alloc_offset_no_parent() attributes {wave.hyperparameters = #wave.hyperparameters<{}>}  {
+  // expected-error @below {{expects parent and offset to be present simultaneously}}
+  %buf = wave.allocate { distributed_shape = #wave.distributed_shape<[] -> (42)>, offset = 42}
+    : !wave.tensor<[@M, @K] of bf16, <shared>>
+}
+
+// -----
+
+func.func @alloc_parent_no_offset() {
+  %alloc = wave.allocate { distributed_shape = #wave.distributed_shape<[] -> (100)> }
+    : !wave.tensor<[@M, @K] of bf16, <shared>>
+  // expected-error @below {{expects parent and offset to be present simultaneously}}
+  %buf = wave.allocate in %alloc : !wave.tensor<[@M, @K] of bf16, <shared>> { distributed_shape = #wave.distributed_shape<[] -> (42)>}
+    : !wave.tensor<[@M, @K] of bf16, <shared>>
+}

@@ -4,13 +4,15 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "water/Dialect/Wave/IR/WaveAttrs.h"
+#include "water/Dialect/Wave/IR/WaveUtils.h"
 #include "water/Dialect/Wave/Transforms/LoweringPatterns.h"
 
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "water/Dialect/Wave/IR/WaveDialect.h"
+#include "water/Dialect/Wave/IR/WaveOps.h"
 #include "water/Dialect/Wave/IR/WaveTypes.h"
-
 #include "llvm/Support/Debug.h"
 
 #define DEBUG_TYPE "wave-tensor-type-converter"
@@ -33,63 +35,25 @@ static Operation *getEnclosingFunction(Value v) {
 }
 
 wave::WaveTensorTypeConverter::WaveTensorTypeConverter() {
-  addConversion([](Value v) -> std::optional<Type> {
+  // Catch-all noop conversion. This will be called last.
+  addConversion([](Type t) { return t; });
+
+  addConversion([this](Value v) -> std::optional<Type> {
     Type type = v.getType();
-    Operation *funcOp = getEnclosingFunction(v);
-    if (!funcOp) {
-      return std::nullopt;
-    }
-    auto hyperparameterAttr = funcOp->getAttrOfType<WaveHyperparameterAttr>(
-        WaveDialect::kHyperparameterAttrName);
-    if (!hyperparameterAttr)
-      return std::nullopt;
+
+    // TODO: this is rather inefficient to constantly query the parent operation
+    // for this object, we can do this once and configure the converter.
+    wave::WaveHyperparameterAttr hyperparameterAttr = getHyperparametersAt(v);
 
     if (auto waveType = dyn_cast<wave::WaveTensorType>(type)) {
-      std::optional<llvm::SmallVector<int64_t>> shape =
-          waveType.getResolvedShape(hyperparameterAttr);
-      // Fail if shapes aren't resolved.
-      if (shape == std::nullopt) {
-        LLVM_DEBUG({
-          DBGS() << "WaveTensorType conversion failed: symbolic shape "
-                    "unresolved\n";
-        });
-        return std::nullopt;
-      }
-      // Convert WaveTensorInRegister to VectorType, and WaveTensorInMemory to
-      // MemRefType with proper memory space.
-      wave::WaveAddressSpace addrSpace = waveType.getAddressSpaceValue();
-      Type elementType = waveType.getElementType();
-
-      switch (addrSpace) {
-      case wave::WaveAddressSpace::Unspecified:
-        LLVM_DEBUG(DBGS() << "address spaces must have been specified\n");
-        return std::nullopt;
-
-      case wave::WaveAddressSpace::Global: {
-        // GPU global memory (device memory)
-        auto globalMemoryAddressSpace = gpu::AddressSpaceAttr::get(
-            elementType.getContext(), gpu::AddressSpace::Global);
-        return MemRefType::get(*shape, elementType,
-                               /*layout=*/MemRefLayoutAttrInterface{},
-                               Attribute(globalMemoryAddressSpace));
-      }
-
-      case wave::WaveAddressSpace::Shared: {
-        // GPU shared memory
-        auto workgroupMemoryAddressSpace = gpu::AddressSpaceAttr::get(
-            elementType.getContext(), gpu::AddressSpace::Workgroup);
-        return MemRefType::get(*shape, elementType,
-                               /*layout=*/MemRefLayoutAttrInterface{},
-                               Attribute(workgroupMemoryAddressSpace));
-      }
-
-      case wave::WaveAddressSpace::Register:
-        // For register space, use vector type (registers are handled by LLVM)
-        return VectorType::get(*shape, elementType);
-      }
+      return convertTensorFromComponents(
+          waveType.getShape(),
+          /*shape=*/{}, waveType.getElementType(),
+          waveType.getAddressSpaceValue(), hyperparameterAttr);
     }
-    // Mark all other types as legal.
-    return type;
+
+    // Try other converters, in particular non-context aware ones.
+    return std::nullopt;
   });
 
   addSourceMaterialization([](OpBuilder &builder, wave::WaveTensorType waveType,
@@ -109,4 +73,63 @@ wave::WaveTensorTypeConverter::WaveTensorTypeConverter() {
     return UnrealizedConversionCastOp::create(builder, loc, type, inputs)
         .getResult(0);
   });
+}
+
+mlir::Type wave::WaveTensorTypeConverter::convertTensorFromComponents(
+    llvm::ArrayRef<wave::WaveSymbolAttr> symbols, mlir::AffineMap shape,
+    mlir::Type elementType, wave::WaveAddressSpace addressSpace,
+    wave::WaveHyperparameterAttr hyperParameters) const {
+  std::optional<SmallVector<int64_t>> symbolValues =
+      wave::resolveSymbolNames(symbols, hyperParameters);
+  if (!symbolValues)
+    return nullptr;
+
+  std::optional<SmallVector<int64_t>> staticShape =
+      shape ? wave::evaluateMapWithSymbols(shape, *symbolValues) : symbolValues;
+  if (!staticShape)
+    return nullptr;
+
+  elementType = convertType(elementType);
+  if (!elementType)
+    return nullptr;
+
+  switch (addressSpace) {
+  case wave::WaveAddressSpace::Unspecified:
+    LLVM_DEBUG(DBGS() << "address spaces must have been specified\n");
+    return nullptr;
+
+  case wave::WaveAddressSpace::Global: {
+    // GPU global memory (device memory)
+    auto globalMemoryAddressSpace = gpu::AddressSpaceAttr::get(
+        elementType.getContext(), gpu::AddressSpace::Global);
+    return MemRefType::get(*staticShape, elementType,
+                           /*layout=*/MemRefLayoutAttrInterface{},
+                           globalMemoryAddressSpace);
+  }
+
+  case wave::WaveAddressSpace::Shared: {
+    // GPU shared memory
+    auto workgroupMemoryAddressSpace = gpu::AddressSpaceAttr::get(
+        elementType.getContext(), gpu::AddressSpace::Workgroup);
+    return MemRefType::get(*staticShape, elementType,
+                           /*layout=*/MemRefLayoutAttrInterface{},
+                           workgroupMemoryAddressSpace);
+  }
+
+  case wave::WaveAddressSpace::Register:
+    // For register space, use vector type (registers are handled by LLVM)
+    return VectorType::get(*staticShape, elementType);
+  }
+
+  llvm_unreachable("unsupported address space");
+}
+
+wave::WaveHyperparameterAttr
+wave::WaveTensorTypeConverter::getHyperparametersAt(mlir::Value value) const {
+  Operation *funcOp = getEnclosingFunction(value);
+  if (!funcOp)
+    return nullptr;
+
+  return funcOp->getAttrOfType<WaveHyperparameterAttr>(
+      WaveDialect::kHyperparameterAttrName);
 }

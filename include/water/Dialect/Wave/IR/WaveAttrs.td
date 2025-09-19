@@ -205,4 +205,35 @@ def WaveHyperparameterAttr : AttrDef<WaveDialect, "WaveHyperparameter"> {
   }];
 }
 
+
+def WaveDistributedShapeAttr : AttrDef<WaveDialect, "DistributedShape"> {
+  let mnemonic = "distributed_shape";
+  let description = [{
+    Distributed (physical) tensor shape as affine expressions over named
+    Wave symbols.
+    Stores:
+      - symbol_names: [WaveSymbolAttr] giving names (e.g., M, BLOCK_M, BLOCK_K)
+      The i-th name maps to the s<i> in the affine expressions
+      - shape: affine_map<()[s0..sN] -> (expr_0, ..., expr_{rank-1})>
+      Each result expr_k defines the k-th physical dimension.
+
+      Parsing/printing:
+      #wave.distributed_shape<[M, K] -> (M, K+4)>
+  }];
+
+  let parameters = (ins
+    ArrayRefParameter<"WaveSymbolAttr">:$symbol_names,
+    "::mlir::AffineMap":$shape
+  );
+  let hasCustomAssemblyFormat = 1;
+
+  let extraClassDeclaration = [{
+    unsigned getRank() const { return getShape().getNumResults(); }
+    unsigned getNumSymbols() const { return getShape().getNumSymbols(); }
+
+    std::optional<llvm::SmallVector<int64_t>>
+    getResolvedShape(::wave::WaveHyperparameterAttr hyper) const;
+  }];
+}
+
 #endif // WATER_DIALECT_WAVE_WAVEATTRS
