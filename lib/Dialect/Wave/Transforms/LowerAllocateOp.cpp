@@ -21,8 +21,7 @@ public:
   LogicalResult
   matchAndRewrite(wave::AllocateOp op, wave::AllocateOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    Type convertedType = getTypeConverter()->convertType(op.getResult());
-
+    Type convertedType = getTypeConverter()->convertType(op);
     if (!convertedType) {
       return rewriter.notifyMatchFailure(op,
                                          "WaveTensorType conversion failed");
@@ -38,7 +37,6 @@ public:
     Value parent = adaptor.getParent();
     int64_t byteOffset = 0;
     if (parent) {
-
       byteOffset = static_cast<int64_t>(*op.getOffset());
       mlir::Value off =
           rewriter.create<mlir::arith::ConstantIndexOp>(loc, byteOffset);

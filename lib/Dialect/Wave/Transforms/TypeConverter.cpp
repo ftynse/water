@@ -32,8 +32,36 @@ static Operation *getEnclosingFunction(Value v) {
   return region->getParentOp()->getParentOfType<FunctionOpInterface>();
 }
 
+// Unwraps unrealized_conversion_cast ops to get the real producer
+static mlir::Value peelCasts(mlir::Value v) {
+  while (true) {
+    if (auto unrealizedcast =
+            v.getDefiningOp<mlir::UnrealizedConversionCastOp>()) {
+      // map result back to the corresponding operand when possible.
+      auto nRes = unrealizedcast.getNumResults();
+      auto nOp = unrealizedcast.getNumOperands();
+      if (auto result = llvm::dyn_cast<mlir::OpResult>(v)) {
+        unsigned idx = result.getResultNumber();
+        if (nRes == nOp) {
+          v = unrealizedcast.getOperand(idx);
+          continue;
+        }
+      }
+      // allow 1→k ?
+      if (nOp == 1) {
+        v = unrealizedcast.getOperand(0);
+        continue;
+      }
+      break;
+    }
+    break;
+  }
+  return v;
+}
+
 wave::WaveTensorTypeConverter::WaveTensorTypeConverter() {
   addConversion([](Value v) -> std::optional<Type> {
+    v = peelCasts(v);
     Type type = v.getType();
     Operation *funcOp = getEnclosingFunction(v);
     if (!funcOp) {
