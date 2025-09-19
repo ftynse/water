@@ -4,6 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "water/Dialect/Wave/IR/WaveAttrs.h"
 #include "water/Dialect/Wave/Transforms/Passes.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -13,6 +14,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "water/Dialect/Wave/IR/WaveOps.h"
 #include "water/Dialect/Wave/Transforms/LoweringPatterns.h"
+#include "water/Dialect/Wave/Transforms/Utils.h"
 
 #define GEN_PASS_DEF_LOWERWAVETOMLIRPASS
 #include "water/Dialect/Wave/Transforms/Passes.h.inc"
@@ -27,7 +29,12 @@ struct LowerWaveToMLIRPass
 
   void runOnOperation() override {
     MLIRContext *ctx = &getContext();
-    mlir::Operation *op = getOperation();
+    Operation *op = getOperation();
+
+    // TODO: require index expressions to be present
+    if (failed(wave::verifyNormalFormPassPrecondition(
+            wave::WaveNormalForm::AllTypesSpecified, op, getPassName())))
+      return signalPassFailure();
 
     wave::WaveTensorTypeConverter typeConverter;
     ConversionTarget target(*ctx);
@@ -43,8 +50,12 @@ struct LowerWaveToMLIRPass
     config.allowPatternRollback = false;
     if (failed(
             applyPartialConversion(op, target, std::move(patterns), config))) {
-      signalPassFailure();
+      return signalPassFailure();
     }
+
+    if (failed(wave::setNormalFormPassPostcondition(wave::WaveNormalForm::None,
+                                                    op)))
+      return signalPassFailure();
   }
 };
 

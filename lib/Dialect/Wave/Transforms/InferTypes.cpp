@@ -9,9 +9,12 @@
 #include "mlir/Analysis/DataFlow/SparseAnalysis.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
+#include "water/Dialect/Wave/IR/WaveAttrs.h"
+#include "water/Dialect/Wave/IR/WaveDialect.h"
 #include "water/Dialect/Wave/IR/WaveInterfaces.h"
 #include "water/Dialect/Wave/IR/WaveOps.h"
 #include "water/Dialect/Wave/Transforms/Passes.h"
+#include "water/Dialect/Wave/Transforms/Utils.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/FormatVariadic.h"
 
@@ -426,6 +429,11 @@ public:
   using WaterWaveInferTypesPassBase::WaterWaveInferTypesPassBase;
 
   void runOnOperation() override {
+    if (llvm::failed(verifyNormalFormPassPrecondition(
+            wave::WaveNormalForm::FunctionBoundarySpecified, getOperation(),
+            getArgument())))
+      return signalPassFailure();
+
     // Configure the analyses. The dead code and SCP analyses are required by
     // the logic of the solver currently.
     mlir::SymbolTableCollection symbolTable;
@@ -511,6 +519,11 @@ public:
         });
 
     if (walkResult.wasInterrupted())
+      return signalPassFailure();
+
+    llvm::LogicalResult result = setNormalFormPassPostcondition(
+        wave::WaveNormalForm::AllTypesSpecified, getOperation());
+    if (llvm::failed(result) && !force)
       return signalPassFailure();
   }
 };

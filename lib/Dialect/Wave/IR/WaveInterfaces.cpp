@@ -6,6 +6,7 @@
 
 #include "water/Dialect/Wave/IR/WaveInterfaces.h"
 #include "water/Dialect/Wave/IR/WaveAttrs.h"
+#include "water/Dialect/Wave/IR/WaveDialect.h"
 #include "water/Dialect/Wave/IR/WaveTypes.h"
 
 #include "mlir/IR/AffineMap.h"
@@ -16,12 +17,12 @@
 using namespace mlir;
 
 LogicalResult wave::verifyWaveIndexMappings(Operation *op) {
-  auto dict = op->getAttrDictionary();
-  auto indexNamed = dict.getNamed("index");
-  if (!indexNamed)
+  // The attribute is optional.
+  Attribute attribute = op->getAttr(wave::WaveDialect::kIndexExprAttrName);
+  if (!attribute)
     return success();
 
-  auto dictAttr = dyn_cast<DictionaryAttr>(indexNamed->getValue());
+  auto dictAttr = dyn_cast<DictionaryAttr>(attribute);
   if (!dictAttr)
     return op->emitError("'index' attribute must be a dictionary");
 

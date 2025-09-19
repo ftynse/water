@@ -14,4 +14,13 @@
 #define GET_ATTRDEF_CLASSES
 #include "water/Dialect/Wave/IR/WaveAttrs.h.inc"
 
+namespace wave::detail {
+/// Verifies that the provided operation and its descendants satisfies the
+/// required normal forms. Emits diagnostics if requested, otherwise just
+/// returns failure.
+llvm::LogicalResult verifyNormalFormAttr(mlir::Operation *root,
+                                         wave::WaveNormalForm form,
+                                         bool emitDiagnostics);
+} // namespace wave::detail
+
 #endif // WATER_DIALECT_WAVE_IR_WAVEATTRS_H

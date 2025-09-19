@@ -6,11 +6,15 @@
 
 #include "water/Dialect/Wave/IR/WaveAttrs.h"
 #include "water/Dialect/Wave/IR/WaveDialect.h"
+#include "water/Dialect/Wave/IR/WaveInterfaces.h"
+#include "water/Dialect/Wave/IR/WaveTypes.h"
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -164,4 +168,87 @@ void wave::WaveDialect::registerAttributes() {
 #define GET_ATTRDEF_LIST
 #include "water/Dialect/Wave/IR/WaveAttrs.cpp.inc"
       >();
+}
+
+// Verify that wave tensor types in the given range are fully specified. Emit a
+// diagnostic with the given message at the location provided, if present,
+// otherwise just return failure.
+static llvm::LogicalResult
+verifyTypesFullySpecified(std::optional<mlir::Location> loc,
+                          mlir::TypeRange types, llvm::StringRef message) {
+  for (mlir::Type type : types) {
+    auto tensorType = llvm::dyn_cast<wave::WaveTensorType>(type);
+    if (!tensorType || tensorType.getFullySpecified())
+      continue;
+
+    if (loc)
+      mlir::emitError(*loc) << message;
+    return llvm::failure();
+  }
+  return llvm::success();
+}
+
+llvm::LogicalResult wave::detail::verifyNormalFormAttr(
+    mlir::Operation *root, wave::WaveNormalForm form, bool emitDiagnostics) {
+  // No normal form required.
+  if (form == wave::WaveNormalForm::None)
+    return llvm::success();
+
+  // Walk in pre-order so we hit functions sooner and verify them for the first
+  // form.
+  mlir::WalkResult walkResult =
+      root->walk<mlir::WalkOrder::PreOrder>([&](mlir::Operation *op) {
+        std::optional<mlir::Location> optionalLoc;
+        if (emitDiagnostics)
+          optionalLoc = op->getLoc();
+
+        if (auto func = llvm::dyn_cast<mlir::FunctionOpInterface>(op)) {
+          if (wave::bitEnumContainsAll(
+                  form, wave::WaveNormalForm::FunctionBoundarySpecified)) {
+            const llvm::StringLiteral kMessage =
+                "normal form requires tensor types to be fully specified at "
+                "function boundaries";
+            if (llvm::failed(verifyTypesFullySpecified(
+                    optionalLoc, func.getArgumentTypes(), kMessage)))
+              return mlir::WalkResult::interrupt();
+            if (llvm::failed(verifyTypesFullySpecified(
+                    optionalLoc, func->getResultTypes(), kMessage)))
+              return mlir::WalkResult::interrupt();
+          }
+        }
+
+        if (wave::bitEnumContainsAll(form,
+                                     wave::WaveNormalForm::OpTypesSpecified)) {
+          const llvm::StringLiteral kMessage =
+              "normal form requires tensor types to be fully specified";
+          if (llvm::failed(verifyTypesFullySpecified(
+                  optionalLoc, op->getOperandTypes(), kMessage)))
+            return mlir::WalkResult::interrupt();
+          if (llvm::failed(verifyTypesFullySpecified(
+                  optionalLoc, op->getResultTypes(), kMessage)))
+            return mlir::WalkResult::interrupt();
+          for (mlir::Region &region : op->getRegions()) {
+            for (mlir::Block &block : region) {
+              if (llvm::failed(verifyTypesFullySpecified(
+                      optionalLoc, block.getArgumentTypes(), kMessage)))
+                return mlir::WalkResult::interrupt();
+            }
+          }
+        }
+
+        if (wave::bitEnumContainsAll(
+                form, wave::WaveNormalForm::IndexExprsSpecified)) {
+          if (op->hasTrait<wave::HasWaveIndexMapping>() &&
+              !op->getAttr(wave::WaveDialect::kIndexExprAttrName)) {
+            op->emitError()
+                << "normal form requires index expressions to be "
+                   "provided for all supported wave dialect operations";
+            return mlir::WalkResult::interrupt();
+          }
+        }
+
+        return mlir::WalkResult::advance();
+      });
+
+  return llvm::failure(walkResult.wasInterrupted());
 }
