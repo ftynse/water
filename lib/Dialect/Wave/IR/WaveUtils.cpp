@@ -1,3 +1,9 @@
+// Copyright 2025 The Water Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 #include "water/Dialect/Wave/IR/WaveUtils.h"
 #include "water/Dialect/Wave/IR/WaveAttrs.h"
 
@@ -27,12 +33,13 @@ wave::resolveSymbolNames(llvm::ArrayRef<wave::WaveSymbolAttr> names,
 }
 
 std::optional<llvm::SmallVector<int64_t>>
-wave::evaluateMapWithSymbols(AffineMap map, llvm::ArrayRef<int64_t> vals) {
+wave::evaluateMapWithSymbols(AffineMap map,
+                             llvm::ArrayRef<int64_t> symbolValues) {
   // Build AffineExpr replacements for symbols: s_i → const(symVals[i]).
   MLIRContext *ctx = map.getContext();
   llvm::SmallVector<AffineExpr> symRepls;
-  symRepls.reserve(vals.size());
-  for (int64_t v : vals)
+  symRepls.reserve(symbolValues.size());
+  for (int64_t v : symbolValues)
     symRepls.push_back(getAffineConstantExpr(v, ctx));
 
   // For each result expr: substitute symbols and fold
@@ -42,8 +49,6 @@ wave::evaluateMapWithSymbols(AffineMap map, llvm::ArrayRef<int64_t> vals) {
     AffineExpr sub = affine.replaceSymbols(symRepls);
     sub = simplifyAffineExpr(sub, /*numDims=*/0, /*numSymbols=*/0);
     if (auto c = llvm::dyn_cast<AffineConstantExpr>(sub)) {
-      if (c.getValue() < 0)
-        return std::nullopt; // optional sanity
       out.push_back(c.getValue());
     } else {
       return std::nullopt;
