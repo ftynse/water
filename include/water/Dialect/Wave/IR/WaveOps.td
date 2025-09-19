@@ -206,17 +206,19 @@ def AllocateOp : WaveOp<"allocate"> {
     shape to only use block sizes and static offsets rather than arbitrarily
     complex expressions.
   }];
+
   let arguments = !con((ins
     Arg<Optional<WaveTensorType>, "Optional parent buffer to view into">:$parent,
     Arg<WaveDistributedShapeAttr, "Distributed (physical) shape">:$distributed_shape,
     Arg<OptionalAttr<I64Attr>, "Byte offset into parent buffer">:$offset
   ), commonArguments);
 
-  let results = (outs Res<WaveTensorType,"Allocated buffer">:$result
-  );
+  let results = (outs Res<WaveTensorType,"Allocated buffer">:$result);
 
   let assemblyFormat =
     " (`in` $parent^ `:` type($parent))? attr-dict `:` type($result)";
+
+  let hasVerifier = 1;
 }
 
 def ReadOp : WaveOp<"read", [

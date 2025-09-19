@@ -75,6 +75,21 @@ using namespace wave;
 #include "water/Dialect/Wave/IR/WaveOps.cpp.inc"
 
 //-----------------------------------------------------------------------------
+// AllocateOp
+//-----------------------------------------------------------------------------
+
+llvm::LogicalResult wave::AllocateOp::verify() {
+  bool hasParent = getParent() != Value();
+  bool hasOffset = getOffset() != std::nullopt;
+  if (hasParent ^ hasOffset) {
+    return emitOpError()
+           << "expects parent and offset to be present simultaneously";
+  }
+
+  return llvm::success();
+}
+
+//-----------------------------------------------------------------------------
 // IterateOp
 //-----------------------------------------------------------------------------
 
