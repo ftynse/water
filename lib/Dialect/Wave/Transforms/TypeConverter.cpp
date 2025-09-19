@@ -20,40 +20,17 @@
 
 using namespace mlir;
 
-/// Gets the nearest enclosing function operation for a given SSA value.
-static Operation *getEnclosingFunction(Value v) {
-  if (Operation *definingOp = v.getDefiningOp())
-    return definingOp->getParentOfType<FunctionOpInterface>();
-
-  auto blockArg = cast<BlockArgument>(v);
-  Block *block = blockArg.getOwner();
-  Region *region = block->getParent();
-  if (!region)
-    return nullptr;
-
-  return region->getParentOp()->getParentOfType<FunctionOpInterface>();
-}
-
-wave::WaveTensorTypeConverter::WaveTensorTypeConverter() {
+wave::WaveTypeConverter::WaveTypeConverter(
+    wave::WaveHyperparameterAttr hyperParameters)
+    : hyperParameters(hyperParameters) {
   // Catch-all noop conversion. This will be called last.
   addConversion([](Type t) { return t; });
 
-  addConversion([this](Value v) -> std::optional<Type> {
-    Type type = v.getType();
-
-    // TODO: this is rather inefficient to constantly query the parent operation
-    // for this object, we can do this once and configure the converter.
-    wave::WaveHyperparameterAttr hyperparameterAttr = getHyperparametersAt(v);
-
-    if (auto waveType = dyn_cast<wave::WaveTensorType>(type)) {
-      return convertTensorFromComponents(
-          waveType.getShape(),
-          /*shape=*/{}, waveType.getElementType(),
-          waveType.getAddressSpaceValue(), hyperparameterAttr);
-    }
-
-    // Try other converters, in particular non-context aware ones.
-    return std::nullopt;
+  addConversion([this](wave::WaveTensorType tensorType) -> Type {
+    return convertTensorFromComponents(tensorType.getShape(),
+                                       /*shape=*/{},
+                                       tensorType.getElementType(),
+                                       tensorType.getAddressSpaceValue());
   });
 
   addSourceMaterialization([](OpBuilder &builder, wave::WaveTensorType waveType,
@@ -75,10 +52,9 @@ wave::WaveTensorTypeConverter::WaveTensorTypeConverter() {
   });
 }
 
-mlir::Type wave::WaveTensorTypeConverter::convertTensorFromComponents(
+mlir::Type wave::WaveTypeConverter::convertTensorFromComponents(
     llvm::ArrayRef<wave::WaveSymbolAttr> symbols, mlir::AffineMap shape,
-    mlir::Type elementType, wave::WaveAddressSpace addressSpace,
-    wave::WaveHyperparameterAttr hyperParameters) const {
+    mlir::Type elementType, wave::WaveAddressSpace addressSpace) const {
   std::optional<SmallVector<int64_t>> symbolValues =
       wave::resolveSymbolNames(symbols, hyperParameters);
   if (!symbolValues)
@@ -122,14 +98,4 @@ mlir::Type wave::WaveTensorTypeConverter::convertTensorFromComponents(
   }
 
   llvm_unreachable("unsupported address space");
-}
-
-wave::WaveHyperparameterAttr
-wave::WaveTensorTypeConverter::getHyperparametersAt(mlir::Value value) const {
-  Operation *funcOp = getEnclosingFunction(value);
-  if (!funcOp)
-    return nullptr;
-
-  return funcOp->getAttrOfType<WaveHyperparameterAttr>(
-      WaveDialect::kHyperparameterAttrName);
 }

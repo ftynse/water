@@ -165,3 +165,11 @@ func.func @alloc_parent_no_offset() {
   %buf = wave.allocate in %alloc : !wave.tensor<[@M, @K] of bf16, <shared>> { distributed_shape = #wave.distributed_shape<[] -> (42)>}
     : !wave.tensor<[@M, @K] of bf16, <shared>>
 }
+
+// -----
+
+module attributes { wave.hyperparameters = #wave.hyperparameters<{}> } {
+  // expected-error @below {{defines hyperparameters when its ancestor already had}}
+  // expected-note @above {{ancestor}}
+  module attributes { wave.hyperparameters = #wave.hyperparameters<{}> } {}
+}

@@ -71,6 +71,6 @@ public:
 } // namespace
 
 void wave::populateWaveRegisterLoweringPatterns(
-    WaveTensorTypeConverter &typeConverter, RewritePatternSet &patterns) {
+    WaveTypeConverter &typeConverter, RewritePatternSet &patterns) {
   patterns.add<RegisterOpLoweringPattern>(typeConverter, patterns.getContext());
 }

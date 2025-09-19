@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "water/Dialect/Wave/IR/WaveAttrs.h"
+#include "water/Dialect/Wave/IR/WaveDialect.h"
 #include "water/Dialect/Wave/Transforms/Passes.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -43,24 +44,35 @@ struct LowerWaveToMLIRPass
             wave::WaveNormalForm::AllTypesSpecified, op, getPassName())))
       return signalPassFailure();
 
-    wave::WaveTensorTypeConverter typeConverter;
     ConversionTarget target(*ctx);
-
     target.addLegalDialect<arith::ArithDialect, vector::VectorDialect,
                            memref::MemRefDialect, gpu::GPUDialect>();
     target.addIllegalOp<wave::RegisterOp, wave::AllocateOp>();
-
-    RewritePatternSet patterns(ctx);
-    wave::populateWaveRegisterLoweringPatterns(typeConverter, patterns);
-    wave::populateWaveBinaryOpLoweringPatterns(typeConverter, patterns);
-    wave::populateWaveAllocateOpLoweringPatterns(typeConverter, patterns);
-
     ConversionConfig config;
     config.allowPatternRollback = false;
-    if (failed(
-            applyPartialConversion(op, target, std::move(patterns), config))) {
+
+    WalkResult walkResult =
+        getOperation()->walk<WalkOrder::PreOrder>([&](Operation *op) {
+          auto hyperparam = op->getAttrOfType<wave::WaveHyperparameterAttr>(
+              wave::WaveDialect::kHyperparameterAttrName);
+          if (!hyperparam)
+            return WalkResult::advance();
+
+          wave::WaveTypeConverter typeConverter(hyperparam);
+          RewritePatternSet patterns(ctx);
+          wave::populateWaveRegisterLoweringPatterns(typeConverter, patterns);
+          wave::populateWaveBinaryOpLoweringPatterns(typeConverter, patterns);
+          wave::populateWaveAllocateOpLoweringPatterns(typeConverter, patterns);
+
+          if (failed(applyPartialConversion(op, target, std::move(patterns),
+                                            config))) {
+            op->emitError() << "failed to convert starting at this operation";
+            return WalkResult::interrupt();
+          }
+          return WalkResult::skip();
+        });
+    if (walkResult.wasInterrupted())
       return signalPassFailure();
-    }
 
     if (failed(wave::setNormalFormPassPostcondition(wave::WaveNormalForm::None,
                                                     op)))

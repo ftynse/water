@@ -9,6 +9,7 @@
 
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "water/Dialect/Wave/IR/WaveAttrs.h"
 
 namespace wave {
 
@@ -16,28 +17,38 @@ enum class WaveAddressSpace : uint32_t;
 class WaveHyperparameterAttr;
 class WaveSymbolAttr;
 
-struct WaveTensorTypeConverter : public mlir::TypeConverter {
-  WaveTensorTypeConverter();
+// Type converter handling Wave dialect types.
+class WaveTypeConverter : public mlir::TypeConverter {
+public:
+  // Type converter is contextual in the given scope, where the scope defines
+  // the hyper-parameters to be used. These feed into symbolic shapes that get
+  // converted into static shapes based on hyperparameter values.
+  explicit WaveTypeConverter(wave::WaveHyperparameterAttr hyperParameters);
 
-  mlir::Type convertTensorFromComponents(
-      llvm::ArrayRef<wave::WaveSymbolAttr> symbols, mlir::AffineMap shape,
-      mlir::Type elementType, wave::WaveAddressSpace addressSpace,
-      wave::WaveHyperparameterAttr hyperParameters) const;
+  // Convert a Wave tensor type without constructing it first. This allows to
+  // both avoid the cost of constructing a new type object and to handle more
+  // general cases than the Wave tensor type currently allows for. If `shape` is
+  // null, an identity shape from symbols is assumed.
+  mlir::Type
+  convertTensorFromComponents(llvm::ArrayRef<wave::WaveSymbolAttr> symbols,
+                              mlir::AffineMap shape, mlir::Type elementType,
+                              wave::WaveAddressSpace addressSpace) const;
 
-  wave::WaveHyperparameterAttr getHyperparametersAt(mlir::Value value) const;
+private:
+  wave::WaveHyperparameterAttr hyperParameters;
 };
 
 // Adds pattern that lowers `wave.register` to upstream MLIR ops.
-void populateWaveRegisterLoweringPatterns(
-    WaveTensorTypeConverter &typeConverter, mlir::RewritePatternSet &patterns);
+void populateWaveRegisterLoweringPatterns(WaveTypeConverter &typeConverter,
+                                          mlir::RewritePatternSet &patterns);
 
 // Adds pattern that lowers wave binary ops to upstream MLIR ops.
-void populateWaveBinaryOpLoweringPatterns(
-    WaveTensorTypeConverter &typeConverter, mlir::RewritePatternSet &patterns);
+void populateWaveBinaryOpLoweringPatterns(WaveTypeConverter &typeConverter,
+                                          mlir::RewritePatternSet &patterns);
 
 // Adds pattern that lowers 'wave.allocate' ops to upstream MLIR ops.
-void populateWaveAllocateOpLoweringPatterns(
-    WaveTensorTypeConverter &typeConverter, mlir::RewritePatternSet &patterns);
+void populateWaveAllocateOpLoweringPatterns(WaveTypeConverter &typeConverter,
+                                            mlir::RewritePatternSet &patterns);
 
 } // namespace wave
 

@@ -54,7 +54,7 @@ public:
 } // namespace
 
 void wave::populateWaveBinaryOpLoweringPatterns(
-    WaveTensorTypeConverter &typeConverter, RewritePatternSet &patterns) {
+    WaveTypeConverter &typeConverter, RewritePatternSet &patterns) {
   patterns
       .add<BinaryOpLoweringPattern<wave::AddOp, arith::AddFOp, arith::AddIOp>,
            BinaryOpLoweringPattern<wave::MulOp, arith::MulFOp, arith::MulIOp>,
