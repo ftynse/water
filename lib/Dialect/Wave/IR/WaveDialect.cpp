@@ -38,7 +38,7 @@ wave::WaveDialect::verifyOperationAttribute(mlir::Operation *op,
              << attr.getName() << " expects a WaveHyperparameterAttr";
     }
 
-    // TODO: consider a mode where parameters can be be union'ed, but not
+    // TODO: consider a mode where parameters can be union'ed, but not
     // redefined. There are passes that currently assume a single set of
     // hyperparameters.
     for (mlir::Operation *parent = op->getParentOp(); parent != nullptr;
