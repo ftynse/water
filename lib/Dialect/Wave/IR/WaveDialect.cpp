@@ -24,7 +24,7 @@ void wave::WaveDialect::initialize() {
   registerTypes();
 }
 
-// Verify whether all types from the given range exclusively used symbols
+// Verify whether all types from the given range exclusively use symbols
 // defined in the hyperparameter attribute, report errors otherwise using the
 // provided callback. Collect used symbols into the given set for future checks.
 static llvm::LogicalResult verifyTypeRangeHyperparamUses(
