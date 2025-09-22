@@ -15,12 +15,14 @@ from dataclasses import dataclass
 
 class AffineConversionError(Exception):
     """Exception raised for errors in affine expression conversion."""
+
     pass
 
 
 @dataclass
 class AffineFraction:
     """Represents a fractional affine expression: numerator / denominator"""
+
     numerator: ir.AffineExpr
     denominator: ir.AffineExpr
 
@@ -32,18 +34,11 @@ class AffineFraction:
     @classmethod
     def from_affine_expr(cls, expr: ir.AffineExpr) -> "AffineFraction":
         """Create a fraction from an AffineExpr"""
-        return cls(
-            expr,
-            ir.AffineExpr.get_constant(1)
-        )
+        return cls(expr, ir.AffineExpr.get_constant(1))
 
     @staticmethod
     def is_affine_expr_constant_one(expr: ir.AffineExpr) -> bool:
         return isinstance(expr, ir.AffineConstantExpr) and expr.value == 1
-
-    def is_valid_fraction(self) -> bool:
-        """Check if this represents a valid fraction (denominator == 1)"""
-        return AffineFraction.is_affine_expr_constant_one(self.denominator)
 
     def __add__(self, other: "AffineFraction") -> "AffineFraction":
         """Add two fractions: a/b + c/d = (a*d + c*b)/(b*d)"""
@@ -61,12 +56,12 @@ class AffineFraction:
         if b == d:
             # Same denominator: simple addition
             return AffineFraction(a + c, b)
-        else:
-            # Different denominators: a*d + c*b
-            term1 = a * d if not AffineFraction.is_affine_expr_constant_one(d) else a
-            term2 = c * b if not AffineFraction.is_affine_expr_constant_one(b) else c
-            new_numerator = term1 + term2
-            return AffineFraction(term1 + term2, common_denom)
+
+        # Different denominators: a*d + c*b
+        term1 = a * d if not AffineFraction.is_affine_expr_constant_one(d) else a
+        term2 = c * b if not AffineFraction.is_affine_expr_constant_one(b) else c
+        new_numerator = term1 + term2
+        return AffineFraction(term1 + term2, common_denom)
 
     def __mul__(self, other: "AffineFraction") -> "AffineFraction":
         """Multiply two fractions: (a/b) * (c/d) = (a*c)/(b*d)"""
@@ -74,8 +69,12 @@ class AffineFraction:
             return NotImplemented
 
         numerator = self.numerator * other.numerator
-        if isinstance(self.denominator, ir.AffineConstantExpr) and isinstance(other.denominator, ir.AffineConstantExpr):
-            denominator = ir.AffineExpr.get_constant(self.denominator.value * other.denominator.value)
+        if isinstance(self.denominator, ir.AffineConstantExpr) and isinstance(
+            other.denominator, ir.AffineConstantExpr
+        ):
+            denominator = ir.AffineExpr.get_constant(
+                self.denominator.value * other.denominator.value
+            )
         else:
             denominator = self.denominator * other.denominator
 
@@ -96,12 +95,13 @@ def _convert_expr_to_fraction(
         else:
             available_symbols = [str(s) for s in symbols]
             raise AffineConversionError(
-                f"Unknown symbol '{sympy_expr}'. Available symbols: {available_symbols}")
+                f"Unknown symbol '{sympy_expr}'. Available symbols: {available_symbols}"
+            )
 
     elif sympy_expr.is_Rational:
         return AffineFraction(
             ir.AffineExpr.get_constant(sympy_expr.p),
-            ir.AffineExpr.get_constant(sympy_expr.q)
+            ir.AffineExpr.get_constant(sympy_expr.q),
         )
 
     elif sympy_expr.is_Add:
@@ -110,8 +110,6 @@ def _convert_expr_to_fraction(
         result = AffineFraction.from_integer(0)
         for term in sympy_expr.args:
             frac = _convert_expr_to_fraction(term, symbols)
-            if frac is None:
-                return None
             result += frac
         return result
 
@@ -121,8 +119,6 @@ def _convert_expr_to_fraction(
 
         for factor in sympy_expr.args:
             frac = _convert_expr_to_fraction(factor, symbols)
-            if frac is None:
-                return None
             result *= frac
 
         return result
@@ -131,7 +127,8 @@ def _convert_expr_to_fraction(
         # Division by symbol is also expressed as Pow: x^(-1) = 1/x
         if not sympy_expr.exp.is_Integer:
             raise AffineConversionError(
-                f"Only integer exponents are supported. Got: {sympy_expr.exp}")
+                f"Only integer exponents are supported. Got: {sympy_expr.exp}"
+            )
 
         base_frac = _convert_expr_to_fraction(sympy_expr.base, symbols)
         result = base_frac
@@ -142,12 +139,16 @@ def _convert_expr_to_fraction(
         for _ in range(1, abs(sympy_expr.exp)):
             result *= base_frac
 
-        return AffineFraction(
-            result.denominator,
-            result.numerator,
-        ) if sympy_expr.exp < 0 else AffineFraction(
-            result.numerator,
-            result.denominator,
+        return (
+            AffineFraction(
+                result.denominator,
+                result.numerator,
+            )
+            if sympy_expr.exp < 0
+            else AffineFraction(
+                result.numerator,
+                result.denominator,
+            )
         )
 
     elif hasattr(sympy_expr, "func"):
@@ -155,32 +156,35 @@ def _convert_expr_to_fraction(
 
         if func_name in ("floor", "ceiling") and len(sympy_expr.args) == 1:
             arg_frac = _convert_expr_to_fraction(sympy_expr.args[0], symbols)
-            if arg_frac is None:
-                return None
 
             # Apply floor or ceiling to the fraction
             if func_name == "floor":
-                result_expr = ir.AffineExpr.get_floor_div(arg_frac.numerator, arg_frac.denominator)
+                result_expr = ir.AffineExpr.get_floor_div(
+                    arg_frac.numerator, arg_frac.denominator
+                )
             else:  # ceiling
-                result_expr = ir.AffineExpr.get_ceil_div(arg_frac.numerator, arg_frac.denominator)
+                result_expr = ir.AffineExpr.get_ceil_div(
+                    arg_frac.numerator, arg_frac.denominator
+                )
 
             return AffineFraction.from_affine_expr(result_expr)
 
         elif func_name == "Mod" and len(sympy_expr.args) == 2:
             x_frac = _convert_expr_to_fraction(sympy_expr.args[0], symbols)
             y_frac = _convert_expr_to_fraction(sympy_expr.args[1], symbols)
-            if x_frac is None or y_frac is None:
-                return None
 
             result_expr = x_frac.numerator % y_frac.numerator
             return AffineFraction.from_affine_expr(result_expr)
 
         else:
-            raise AffineConversionError(f"Unsupported function '{func_name}': {sympy_expr}")
+            raise AffineConversionError(
+                f"Unsupported function '{func_name}': {sympy_expr}"
+            )
 
     else:
         raise AffineConversionError(
-                f"Unsupported expression type: {type(sympy_expr).__name__}: {sympy_expr}")
+            f"Unsupported expression type: {type(sympy_expr).__name__}: {sympy_expr}"
+        )
 
 
 def convert_sympy_to_affine_map(
@@ -200,17 +204,14 @@ def convert_sympy_to_affine_map(
         AffineConversionError: if conversion fails for any reason
     """
 
-    try:
-        fraction = _convert_expr_to_fraction(expr, symbols)
+    fraction = _convert_expr_to_fraction(expr, symbols)
 
-        # Final validation: we must have valid fraction (i.e. denominator = 1) result for AffineMap
-        if not fraction.is_valid_fraction():
-            raise AffineConversionError(
-                f"Expression results in invalid fraction: {expr}\n"
-                f"  Numerator: {fraction.numerator}\n"
-                f"  Denominator: {fraction.denominator}")
+    # Final validation: we must have valid fraction (i.e. denominator = 1) result for AffineMap
+    if not AffineFraction.is_affine_expr_constant_one(fraction.denominator):
+        raise AffineConversionError(
+            f"Expression results in invalid fraction: {expr}\n"
+            f"  Numerator: {fraction.numerator}\n"
+            f"  Denominator: {fraction.denominator}"
+        )
 
-        return ir.AffineMap.get(0, len(symbols), [fraction.numerator])
-
-    except AffineConversionError as e:
-        raise e
+    return ir.AffineMap.get(0, len(symbols), [fraction.numerator])

@@ -2,7 +2,10 @@
 # RUN: env PYTHONPATH=%py_pkg_root:%PYTHONPATH %python %s | FileCheck %s
 
 from water_mlir import ir
-from water_mlir.sympy_to_affine_converter import convert_sympy_to_affine_map, AffineConversionError
+from water_mlir.sympy_to_affine_converter import (
+    convert_sympy_to_affine_map,
+    AffineConversionError,
+)
 
 import sympy
 
@@ -104,7 +107,12 @@ def test_floor_ceil_conversion():
     # CHECK: ()[s0, s1, s2] -> ((s0 + 2) ceildiv s1)
     print(convert_sympy_to_affine_map(sympy.sympify("ceiling((x+2)/y)"), symbols))
     # CHECK: ()[s0, s1, s2] -> ((s0 ceildiv s1) * (3 floordiv s0) + (s0 * 4 + s2) ceildiv 4 + s0 floordiv 2)
-    print(convert_sympy_to_affine_map(sympy.sympify("floor(x/2) + ceiling(x/y) * floor(3/x) + ceiling(x + z/4)"), symbols))
+    print(
+        convert_sympy_to_affine_map(
+            sympy.sympify("floor(x/2) + ceiling(x/y) * floor(3/x) + ceiling(x + z/4)"),
+            symbols,
+        )
+    )
 
 
 @test_in_context
@@ -136,4 +144,6 @@ def test_pow_conversion():
     # CHECK: ()[s0, s1] -> ((s0 * s0) * s0 + s1 * s1)
     print(convert_sympy_to_affine_map(sympy.sympify("x^3 + y^2"), symbols))
     # CHECK: ()[s0, s1] -> (((s0 * s0) * 8 + ((s1 * s1) * s1) * 9) floordiv (((s1 * s1) * s1) * (s0 * s0)))
-    print(convert_sympy_to_affine_map(sympy.sympify("floor((3/x)^2 + 8*y^(-3))"), symbols))
+    print(
+        convert_sympy_to_affine_map(sympy.sympify("floor((3/x)^2 + 8*y^(-3))"), symbols)
+    )
