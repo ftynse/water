@@ -26,16 +26,10 @@ public:
     wave::WaveTensorType resultType = op.getResult().getType();
     wave::DistributedShapeAttr distributedShape = op.getDistributedShape();
     auto *typeConverter =
-        static_cast<const wave::WaveTensorTypeConverter *>(getTypeConverter());
-    wave::WaveHyperparameterAttr hyperParameters =
-        typeConverter->getHyperparametersAt(op.getResult());
-    if (!hyperParameters) {
-      return rewriter.notifyMatchFailure(op, "no hyperparameters present");
-    }
+        static_cast<const wave::WaveTypeConverter *>(getTypeConverter());
     Type convertedResultType = typeConverter->convertTensorFromComponents(
         distributedShape.getSymbolNames(), distributedShape.getShape(),
-        resultType.getElementType(), resultType.getAddressSpaceValue(),
-        hyperParameters);
+        resultType.getElementType(), resultType.getAddressSpaceValue());
     if (!convertedResultType) {
       return rewriter.notifyMatchFailure(op,
                                          "failed to construct resulting type");
@@ -82,6 +76,6 @@ public:
 } // namespace
 
 void wave::populateWaveAllocateOpLoweringPatterns(
-    WaveTensorTypeConverter &typeConverter, RewritePatternSet &patterns) {
+    WaveTypeConverter &typeConverter, RewritePatternSet &patterns) {
   patterns.add<AllocateOpLoweringPattern>(typeConverter, patterns.getContext());
 }

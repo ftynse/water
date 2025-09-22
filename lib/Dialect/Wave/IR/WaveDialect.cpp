@@ -33,10 +33,25 @@ wave::WaveDialect::verifyOperationAttribute(mlir::Operation *op,
     return op->emitError() << attr.getName() << " expects a WaveNormalFormAttr";
   }
   if (attr.getName() == kHyperparameterAttrName) {
-    if (llvm::isa<wave::WaveHyperparameterAttr>(attr.getValue()))
-      return llvm::success();
-    return op->emitError() << attr.getName()
-                           << " expects a WaveHyperparameterAttr";
+    if (!llvm::isa<wave::WaveHyperparameterAttr>(attr.getValue())) {
+      return op->emitError()
+             << attr.getName() << " expects a WaveHyperparameterAttr";
+    }
+
+    // TODO: consider a mode where parameters can be union'ed, but not
+    // redefined. There are passes that currently assume a single set of
+    // hyperparameters.
+    for (mlir::Operation *parent = op->getParentOp(); parent != nullptr;
+         parent = parent->getParentOp()) {
+      if (parent->hasAttr(kHyperparameterAttrName)) {
+        mlir::InFlightDiagnostic diag =
+            op->emitError()
+            << "defines hyperparameters when its ancestor already had";
+        diag.attachNote(parent->getLoc()) << "ancestor";
+        return diag;
+      }
+    }
+    return llvm::success();
   }
   return op->emitError() << "unexpected wave dialect attribute "
                          << attr.getName() << " = " << attr.getValue();
