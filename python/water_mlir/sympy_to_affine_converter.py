@@ -1,148 +1,216 @@
+# Copyright 2025 The Water Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 import sympy
 from sympy.parsing import sympy_parser
-from typing import List
+from water_mlir import ir
+
+
+from typing import List, Union, Optional, Tuple
+from dataclasses import dataclass
+
+
+class AffineConversionError(Exception):
+    """Exception raised for errors in affine expression conversion."""
+    pass
+
+
+@dataclass
+class AffineFraction:
+    """Represents a fractional affine expression: numerator / denominator"""
+    numerator: ir.AffineExpr
+    denominator: ir.AffineExpr
+
+    @classmethod
+    def from_integer(cls, value: int) -> "AffineFraction":
+        """Create a fraction from an integer"""
+        return cls.from_affine_expr(ir.AffineExpr.get_constant(value))
+
+    @classmethod
+    def from_affine_expr(cls, expr: ir.AffineExpr) -> "AffineFraction":
+        """Create a fraction from an AffineExpr"""
+        return cls(
+            expr,
+            ir.AffineExpr.get_constant(1)
+        )
+
+    @staticmethod
+    def is_affine_expr_constant_one(expr: ir.AffineExpr) -> bool:
+        return isinstance(expr, ir.AffineConstantExpr) and expr.value == 1
+
+    def is_valid_fraction(self) -> bool:
+        """Check if this represents a valid fraction (denominator == 1)"""
+        return AffineFraction.is_affine_expr_constant_one(self.denominator)
+
+    def __add__(self, other: "AffineFraction") -> "AffineFraction":
+        """Add two fractions: a/b + c/d = (a*d + c*b)/(b*d)"""
+        if not isinstance(other, AffineFraction):
+            return NotImplemented
+
+        # Both denominators must be constants for addition
+        a, b = self.numerator, self.denominator
+        c, d = other.numerator, other.denominator
+
+        # Compute common denominator: b*d
+        common_denom = b * d
+
+        # Compute numerators: a*d + c*b
+        if b == d:
+            # Same denominator: simple addition
+            return AffineFraction(a + c, b)
+        else:
+            # Different denominators: a*d + c*b
+            term1 = a * d if not AffineFraction.is_affine_expr_constant_one(d) else a
+            term2 = c * b if not AffineFraction.is_affine_expr_constant_one(b) else c
+            new_numerator = term1 + term2
+            return AffineFraction(term1 + term2, common_denom)
+
+    def __mul__(self, other: "AffineFraction") -> "AffineFraction":
+        """Multiply two fractions: (a/b) * (c/d) = (a*c)/(b*d)"""
+        if not isinstance(other, AffineFraction):
+            return NotImplemented
+
+        numerator = self.numerator * other.numerator
+        if isinstance(self.denominator, ir.AffineConstantExpr) and isinstance(other.denominator, ir.AffineConstantExpr):
+            denominator = ir.AffineExpr.get_constant(self.denominator.value * other.denominator.value)
+        else:
+            denominator = self.denominator * other.denominator
+
+        return AffineFraction(numerator, denominator)
+
+
+def _convert_expr_to_fraction(
+    sympy_expr: sympy.core.expr.Expr, symbols: List[sympy.core.symbol.Symbol]
+) -> AffineFraction:
+    """Recursively convert sympy expression to AffineFraction"""
+    if sympy_expr.is_Integer:
+        return AffineFraction.from_integer(sympy_expr.p)
+
+    elif sympy_expr.is_Symbol:
+        if sympy_expr in symbols:
+            symbol_idx = symbols.index(sympy_expr)
+            return AffineFraction.from_affine_expr(ir.AffineExpr.get_symbol(symbol_idx))
+        else:
+            available_symbols = [str(s) for s in symbols]
+            raise AffineConversionError(
+                f"Unknown symbol '{sympy_expr}'. Available symbols: {available_symbols}")
+
+    elif sympy_expr.is_Rational:
+        return AffineFraction(
+            ir.AffineExpr.get_constant(sympy_expr.p),
+            ir.AffineExpr.get_constant(sympy_expr.q)
+        )
+
+    elif sympy_expr.is_Add:
+        # Convert all terms to fractions and find common denominator
+        fractions = []
+        result = AffineFraction.from_integer(0)
+        for term in sympy_expr.args:
+            frac = _convert_expr_to_fraction(term, symbols)
+            if frac is None:
+                return None
+            result += frac
+        return result
+
+    elif sympy_expr.is_Mul:
+        # Multiply fractions: (a/b) * (c/d) = (a*c)/(b*d)
+        result = AffineFraction.from_integer(1)
+
+        for factor in sympy_expr.args:
+            frac = _convert_expr_to_fraction(factor, symbols)
+            if frac is None:
+                return None
+            result *= frac
+
+        return result
+
+    elif sympy_expr.is_Pow:
+        # Division by symbol is also expressed as Pow: x^(-1) = 1/x
+        if not sympy_expr.exp.is_Integer:
+            raise AffineConversionError(
+                f"Only integer exponents are supported. Got: {sympy_expr.exp}")
+
+        base_frac = _convert_expr_to_fraction(sympy_expr.base, symbols)
+        result = base_frac
+
+        if sympy_expr.exp == 0:
+            return AffineFraction.from_integer(1)
+
+        for _ in range(1, abs(sympy_expr.exp)):
+            result *= base_frac
+
+        return AffineFraction(
+            result.denominator,
+            result.numerator,
+        ) if sympy_expr.exp < 0 else AffineFraction(
+            result.numerator,
+            result.denominator,
+        )
+
+    elif hasattr(sympy_expr, "func"):
+        func_name = sympy_expr.func.__name__
+
+        if func_name in ("floor", "ceiling") and len(sympy_expr.args) == 1:
+            arg_frac = _convert_expr_to_fraction(sympy_expr.args[0], symbols)
+            if arg_frac is None:
+                return None
+
+            # Apply floor or ceiling to the fraction
+            if func_name == "floor":
+                result_expr = ir.AffineExpr.get_floor_div(arg_frac.numerator, arg_frac.denominator)
+            else:  # ceiling
+                result_expr = ir.AffineExpr.get_ceil_div(arg_frac.numerator, arg_frac.denominator)
+
+            return AffineFraction.from_affine_expr(result_expr)
+
+        elif func_name == "Mod" and len(sympy_expr.args) == 2:
+            x_frac = _convert_expr_to_fraction(sympy_expr.args[0], symbols)
+            y_frac = _convert_expr_to_fraction(sympy_expr.args[1], symbols)
+            if x_frac is None or y_frac is None:
+                return None
+
+            result_expr = x_frac.numerator % y_frac.numerator
+            return AffineFraction.from_affine_expr(result_expr)
+
+        else:
+            raise AffineConversionError(f"Unsupported function '{func_name}': {sympy_expr}")
+
+    else:
+        raise AffineConversionError(
+                f"Unsupported expression type: {type(sympy_expr).__name__}: {sympy_expr}")
 
 
 def convert_sympy_to_affine_map(
     expr: sympy.core.expr.Expr, symbols: List[sympy.core.symbol.Symbol]
-):
+) -> ir.AffineMap:
     """
-    Convert a sympy expression to an MLIR AffineMap.
-
-    Note: this must be called under a module, context and location manager.
+    Convert a sympy expression to an MLIR AffineMap using fractional algebra.
 
     Args:
-        expr: sympy expression
-        symbols: list of symbols that `expr` might contain
+        expr: sympy expression to convert
+        symbols: list of symbols that the expression might contain
 
     Returns:
-        AffineMap if successful, None if conversion fails
+        AffineMap representing the expression
+
+    Raises:
+        AffineConversionError: if conversion fails for any reason
     """
 
-    # Importing lazily to avoid circular import.
-    from water_mlir import ir
+    try:
+        fraction = _convert_expr_to_fraction(expr, symbols)
 
-    def convert_expr(sympy_expr: sympy.core.expr.Expr):
-        """Recursively convert sympy expression to AffineExpr"""
-        if sympy_expr.is_Integer:
-            return ir.AffineExpr.get_constant(sympy_expr.p)
+        # Final validation: we must have valid fraction (i.e. denominator = 1) result for AffineMap
+        if not fraction.is_valid_fraction():
+            raise AffineConversionError(
+                f"Expression results in invalid fraction: {expr}\n"
+                f"  Numerator: {fraction.numerator}\n"
+                f"  Denominator: {fraction.denominator}")
 
-        elif sympy_expr.is_Symbol:
-            if sympy_expr in symbols:
-                symbol_idx = symbols.index(sympy_expr)
-                return ir.AffineExpr.get_symbol(symbol_idx)
-            else:
-                print(
-                    f"Error: Unknown symbol '{sympy_expr}'. Available symbols: {symbols}."
-                )
-                return None
+        return ir.AffineMap.get(0, len(symbols), [fraction.numerator])
 
-        elif sympy_expr.is_Rational:
-            print(
-                f"Warning: Rounding rational number {sympy_expr} down, since affine expr does not support float."
-            )
-            return ir.AffineExpr.get_floor_div(
-                ir.AffineExpr.get_constant(sympy_expr.p),
-                ir.AffineExpr.get_constant(sympy_expr.q),
-            )
-
-        elif sympy_expr.is_Pow:
-            if sympy_expr.exp != -1:
-                print(
-                    f"Error: Only power of -1 is supported in affine expression, as it can be written as 1/x. Got: {sympy_expr}."
-                )
-                return None
-            # Using floor_div would make the expression be simplified to 0, let's use ceil_div to preserve the division expression.
-            print(
-                f"Warning: Converting {sympy_expr.base}^(-1) to ceil(1/{sympy_expr.base}) to preserve the division expression."
-            )
-            return ir.AffineExpr.get_ceil_div(1, convert_expr(sympy_expr.base))
-
-        elif sympy_expr.is_Add:
-            result = ir.AffineExpr.get_constant(0)
-            for term in sympy_expr.args:
-                term_result = convert_expr(term)
-                if term_result is None:
-                    return None
-                result = result + term_result
-            return result
-
-        elif sympy_expr.is_Mul:
-            result = ir.AffineExpr.get_constant(1)
-            divide_by = 1
-            for factor in sympy_expr.args:
-                # In sympy, x / 2 is expressed as (1/2) * x.
-                #           1 / x is expressed as x^(-1).
-                # We accumulate the denominator of all these expressions to do a final division at the very end.
-                if factor.is_Rational:
-                    result *= factor.p
-                    divide_by *= factor.q
-                    continue
-                if factor.is_Pow:
-                    assert factor.exp == -1
-                    divide_by *= convert_expr(factor.base)
-                    continue
-                result *= convert_expr(factor)
-            if divide_by != 1:
-                result = ir.AffineExpr.get_floor_div(result, divide_by)
-            return result
-
-        # Handle special functions
-        elif hasattr(sympy_expr, "func"):
-            func_name = sympy_expr.func.__name__
-
-            if func_name in ("floor", "ceiling"):
-                assert len(sympy_expr.args) == 1
-                arg = sympy_expr.args[0]
-                if arg.is_Mul:
-                    # floor(x/2) -> 1/2 = args[0], x = args[1] (Rational args always come first in sympy)
-                    if arg.args[0].is_Rational:
-                        numerator = convert_expr(arg.args[1]) * arg.args[0].p
-                        denominator = arg.args[0].q
-                    # floor((x+1)/y) -> 1/y = args[0], x+1 = args[1]
-                    elif arg.args[0].is_Pow:
-                        numerator = convert_expr(arg.args[1])
-                        denominator = convert_expr(arg.args[0].base)
-                    # floor(3/x) -> 3 = args[0], 1/x = args[1]
-                    elif arg.args[1].is_Pow:
-                        numerator = convert_expr(arg.args[0])
-                        denominator = convert_expr(arg.args[1].base)
-                    else:
-                        print(
-                            f"Error: Unsupported floor/ceiling expression - {sympy_expr}."
-                        )
-                        return None
-                    return (
-                        ir.AffineExpr.get_floor_div(numerator, denominator)
-                        if func_name == "floor"
-                        else ir.AffineExpr.get_ceil_div(numerator, denominator)
-                    )
-                if arg.is_Symbol:
-                    # Symbols should always be integer, so floor(x) = ceiling(x) = x
-                    return convert_expr(arg)
-                # Other types of floor()/ceiling() should only involve constants and have been simplified into an integer.
-                print(f"Error: Unsupported floor/ceiling expression - {sympy_expr}.")
-                return None
-
-            elif func_name == "Mod" and len(sympy_expr.args) == 2:
-                x = convert_expr(sympy_expr.args[0])
-                y = convert_expr(sympy_expr.args[1])
-                return x % y
-
-            else:
-                print(
-                    f"Error: Unsupported function '{func_name}' in expression: {sympy_expr}."
-                )
-                return None
-
-        else:
-            print(
-                f"Error: Unsupported expression type: {type(sympy_expr).__name__} - {sympy_expr}."
-            )
-            return None
-
-    affine_expr = convert_expr(expr)
-    if affine_expr is None:
-        return None
-
-    return ir.AffineMap.get(0, len(symbols), [affine_expr])
+    except AffineConversionError as e:
+        raise e
