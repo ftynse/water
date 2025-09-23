@@ -5,11 +5,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 import sympy
-from sympy.parsing import sympy_parser
 from water_mlir import ir
 
 
-from typing import List, Union, Optional, Tuple
+from typing import List
 from dataclasses import dataclass
 
 
