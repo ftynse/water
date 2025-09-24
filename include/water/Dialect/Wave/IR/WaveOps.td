@@ -231,7 +231,9 @@ def ReadOp : WaveOp<"read", [
   }];
 
   let arguments = !con((ins
-    Arg<WaveTensorInMemory, "Tensor representing memory to read from">:$memory
+    Arg<WaveTensorInMemory, "Tensor representing memory to read from">:$memory,
+    Arg<OptionalAttr<WaveDistributedShapeAttr>, "Bounds for building mask">:$bounds
+
   ), commonArguments);
 
   let results = (outs
@@ -277,7 +279,8 @@ def WriteOp : WaveOp<"write", [
 
   let arguments = !con((ins
     Arg<WaveTensorInRegister, "Value to write">:$value_to_store,
-    Arg<WaveTensorInMemory, "Tensor representing memory to write into">:$memory
+    Arg<WaveTensorInMemory, "Tensor representing memory to write into">:$memory,
+    Arg<OptionalAttr<WaveDistributedShapeAttr>, "Bounds for building mask">:$bounds
   ), commonArguments);
 
   let assemblyFormat =

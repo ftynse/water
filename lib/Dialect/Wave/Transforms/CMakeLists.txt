@@ -4,6 +4,7 @@ add_mlir_dialect_library(MLIRWaveTransforms
   LowerRegister.cpp
   LowerWaveToMLIR.cpp
   LowerAllocateOp.cpp
+  LowerReadWriteOps.cpp
   TypeConverter.cpp
   Utils.cpp
 

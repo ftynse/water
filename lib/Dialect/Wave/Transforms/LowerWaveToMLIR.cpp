@@ -54,6 +54,7 @@ struct LowerWaveToMLIRPass
     wave::populateWaveRegisterLoweringPatterns(typeConverter, patterns);
     wave::populateWaveBinaryOpLoweringPatterns(typeConverter, patterns);
     wave::populateWaveAllocateOpLoweringPatterns(typeConverter, patterns);
+    wave::populateWaveReadWriteLoweringPatterns(typeConverter, patterns);
 
     ConversionConfig config;
     config.allowPatternRollback = false;
