@@ -179,4 +179,44 @@ NB_MODULE(_waterDialects, m) {
       .value("Global", wave::WaveAddressSpace::Global)
       .value("Shared", wave::WaveAddressSpace::Shared)
       .value("Register", wave::WaveAddressSpace::Register);
+
+  //===---------------------------------------------------------------------===//
+  // WaveDistributedShapeAttr
+  //===---------------------------------------------------------------------===//
+
+  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
+      d, "WaveDistributedShapeAttr", mlirAttributeIsAWaveDistributedShapeAttr,
+      mlirWaveDistributedShapeAttrGetTypeID)
+      .def_classmethod(
+          "get",
+          [](const nb::object &cls, const std::vector<std::string> &symbolNames,
+             MlirAffineMap map,
+             // MlirContext should always come last to allow for being
+             // automatically deduced from context.
+             MlirContext context) {
+            std::vector<MlirAttribute> symbolAttrs;
+            intptr_t numSymbols = symbolNames.size();
+            symbolAttrs.reserve(numSymbols);
+
+            for (const std::string &symbolName : symbolNames) {
+              MlirStringRef symbolNameStrRef =
+                  mlirStringRefCreate(symbolName.data(), symbolName.size());
+              MlirAttribute symbolAttr =
+                  mlirWaveSymbolAttrGet(context, symbolNameStrRef);
+              symbolAttrs.push_back(symbolAttr);
+            }
+
+            if (numSymbols != mlirAffineMapGetNumSymbols(map)) {
+              throw nb::value_error("Expected symbol_names to have as many "
+                                    "entries as map have symbols.");
+            }
+            if (mlirAffineMapGetNumDims(map) != 0) {
+              throw nb::value_error("Maps should not involve dimensions.");
+            }
+            return cls(mlirWaveDistributedShapeAttrGet(
+                context, symbolAttrs.data(), map));
+          },
+          nb::arg("cls"), nb::arg("symbol_names"), nb::arg("map"),
+          nb::arg("context") = nb::none(),
+          "Gets a wave.WaveDistributedShapeAttr from parameters.");
 }
