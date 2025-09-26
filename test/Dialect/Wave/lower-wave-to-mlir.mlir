@@ -172,3 +172,27 @@ func.func @lower_alloc() attributes {wave.hyperparameters = #wave.hyperparameter
   return
   }
 }
+
+// -----
+
+module attributes {wave.normal_form = #wave.normal_form<full_types>} {
+// CHECK-LABEL: @lower_read
+func.func @lower_read(%mem: !wave.tensor<[@X] of f16, <global>>) attributes {wave.hyperparameters = #wave.hyperparameters<{BLOCK_M = 64, BLOCK_N=64}>}  {
+  // CHECK-DAG: #[[MAP2:.*]] = affine_map<()[s0, s1] -> (s0 + s1 * 64 - (s0 floordiv 64) * 32)>
+  // CHECK-DAG: #[[MAPY:.*]] = affine_map<()[s0, s1] -> (s0 * 64 + s1 * 32)>
+
+  // CHECK: %[[TIDX_X:.*]] = gpu.thread_id x
+  // CHECK: %[[BIDX_X:.*]] = gpu.block_id  x
+  // CHECK: %[[TIDX_Y:.*]] = gpu.thread_id y
+  // CHECK: %[[BIDX_Y:.*]] = gpu.block_id  y
+
+  // CHECK: %[[ROW:.*]] = affine.apply #[[MAP2]]()[%[[TIDX_X]], %[[BIDX_X]]]
+  // CHECK: %[[COL:.*]] = affine.apply #[[MAPY]]()[%[[BIDX_Y]], %[[TIDX_Y]]]
+
+  // CHECK: %[[VEC:.+]] = vector.load {{.*}}[%[[ROW]], %[[COL]]] : memref<{{.*}}xf16{{.*}}>, vector<32xf16>
+
+  %0 = wave.read %mem index {M : [BLOCK_M, WG0, T0] -> (BLOCK_M * WG0 + (BLOCK_M floordiv 2) * (T0 floordiv 64) + T0 mod 64, 1, 64), N : [T1, WG1, BLOCK_N] -> (WG1 * BLOCK_N + (BLOCK_N floordiv 2) * T1, BLOCK_N ceildiv 2, 1)} : (!wave.tensor<[@X] of f16, <global>>) -> !wave.tensor<any of f16, <register>>
+
+  return
+  }
+}
