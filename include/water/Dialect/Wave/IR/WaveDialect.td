@@ -66,6 +66,10 @@ def WaveDialect : Dialect {
     const static constexpr ::llvm::StringLiteral kElementsPerThreadAttrName =
         "wave.elements_per_thread";
 
+    // Name of the attribute containing the bound expressions for read/write ops.
+    const static constexpr ::llvm::StringLiteral kReadWriteBoundExprAttrName =
+        "wave.read_write_bounds";
+
     // Registration functions. The bodies of these must be placed in the file
     // containing private implementations of attributes and types, respectively.
     void registerAttributes();

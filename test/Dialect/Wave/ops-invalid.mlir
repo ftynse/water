@@ -219,10 +219,11 @@ module attributes {wave.normal_form = #wave.normal_form<full_types>} {
         M : [BLOCK_M, WG0, T0] -> (BLOCK_M * WG0 + (BLOCK_M floordiv 2) * (T0 floordiv 64) + T0 mod 64, 1, 64),
         N : [T1, WG1, BLOCK_N] -> (WG1 * BLOCK_N + (BLOCK_N floordiv 2) * T1, BLOCK_N ceildiv 2, 1)}
       : (!wave.tensor<[@M] of f16, <global>>) -> !wave.tensor<[@M] of f16, <register>>
-
     return
   }
 }
+
+// -----
 
 module attributes {wave.normal_form = #wave.normal_form<full_types>} {
   func.func @index_value_unspecified(%mem: !wave.tensor<[@M] of f16, <global>>)
@@ -244,6 +245,45 @@ module attributes {wave.normal_form = #wave.normal_form<full_types>} {
   attributes {wave.hyperparameters = #wave.hyperparameters<{M = 128}>}  {
     // expected-error @below {{expected result vector type to have the number of elements per thread matching the attribute (4), got 42}}
     %0 = wave.read %mem {elements_per_thread=4}: (!wave.tensor<[@M] of f16, <global>>) -> vector<42xf16>
+    return
+  }
+}
+
+// -----
+
+// expected-error @below {{expects an IntegerAttr}}
+module attributes { wave.elements_per_thread = "abc" } {
+  func.func @elements_per_thread_not_int() {
+    return
+  }
+}
+
+// -----
+
+module {
+  func.func @read_write_bounds_not_dict(%mem: !wave.tensor<any of f32>, %val: !wave.tensor<any of f32, <register>>) {
+    // expected-error @below {{'read_write_bounds' attribute must be a dictionary}}
+    wave.write %val, %mem { wave.read_write_bounds = #wave.distributed_shape<[BLOCK_M, WG0, T0] -> (BLOCK_M * WG0 + (BLOCK_M * (T0 floordiv 64)) floordiv 2 + T0 mod 64)> } : !wave.tensor<any of f32, <register>>, !wave.tensor<any of f32>
+    return
+  }
+}
+
+// -----
+
+module {
+  func.func @read_write_bounds_val_not_distributed_shape_attr(%mem: !wave.tensor<any of f32>, %val: !wave.tensor<any of f32, <register>>) {
+    // expected-error @below {{'read_write_bounds' attribute values must be DistributedShapeAttr, got "abc"}}
+    wave.write %val, %mem { wave.read_write_bounds = {M = "abc"} } : !wave.tensor<any of f32, <register>>, !wave.tensor<any of f32>
+    return
+  }
+}
+
+// -----
+
+// expected-error @below {{'read_write_bounds' attribute can only be attached to 'wave.read' or 'wave.write'}}
+module attributes { wave.read_write_bounds = #wave.distributed_shape<[BLOCK_M, WG0, T0] -> (BLOCK_M * WG0 + (BLOCK_M * (T0 floordiv 64)) floordiv 2 + T0 mod 64)> } {
+  func.func @read_write_bounds_on_module(%mem: !wave.tensor<any of f32>, %val: !wave.tensor<any of f32, <register>>) {
+    wave.write %val, %mem : !wave.tensor<any of f32, <register>>, !wave.tensor<any of f32>
     return
   }
 }

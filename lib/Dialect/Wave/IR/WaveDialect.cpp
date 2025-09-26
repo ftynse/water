@@ -223,6 +223,32 @@ wave::WaveDialect::verifyOperationAttribute(mlir::Operation *op,
     }
     return llvm::success();
   }
+  if (attr.getName() == kReadWriteBoundExprAttrName) {
+    if (!llvm::isa<wave::ReadOp, wave::WriteOp>(op)) {
+      return op->emitError() << "'read_write_bounds' attribute can only be "
+                             << "attached to 'wave.read' or 'wave.write' "
+                             << "operations, but was found on '"
+                             << op->getName().getStringRef() << "'.";
+    }
+
+    auto dictAttr = llvm::dyn_cast<mlir::DictionaryAttr>(attr.getValue());
+    if (!dictAttr) {
+      return op->emitError(
+          "'read_write_bounds' attribute must be a dictionary");
+    }
+
+    // TODO: check that the dictAttr keys are symbols referred by the
+    // wave.tensor type.
+    for (const mlir::NamedAttribute namedAttr : dictAttr) {
+      mlir::Attribute value = namedAttr.getValue();
+      if (!llvm::isa<wave::DistributedShapeAttr>(value)) {
+        return op->emitError("'read_write_bounds' attribute values must be "
+                             "DistributedShapeAttr, got ")
+               << value;
+      }
+    }
+    return llvm::success();
+  }
   return op->emitError() << "unexpected wave dialect attribute "
                          << attr.getName() << " = " << attr.getValue();
 }
