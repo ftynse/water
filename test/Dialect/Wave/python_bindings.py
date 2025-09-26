@@ -99,9 +99,9 @@ try:
         print(wave.WaveDistributedShapeAttr.get(symbol_names, start_map))
 
         try:
-            wave.WaveDistributedShapeAttr.get(["$WG0"], start_map)
+            wave.WaveDistributedShapeAttr.get(symbol_names[:-1], start_map)
         except ValueError as e:
-            assert "as many entries as" in str(e)
+            assert "as many entries as map have symbols" in str(e)
         else:
             assert False, "Expected to fail with ValueError."
 

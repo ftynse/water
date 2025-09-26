@@ -165,11 +165,11 @@ bool WaveHyperparameterAttr::hasSymbol(StringRef symbolName) const {
 }
 
 //===----------------------------------------------------------------------===//
-// WaveDistributedShapeAttr
+// DistributedShapeAttr
 //===----------------------------------------------------------------------===//
 
 std::optional<llvm::SmallVector<int64_t>>
-wave::WaveDistributedShapeAttr::getResolvedShape(
+wave::DistributedShapeAttr::getResolvedShape(
     wave::WaveHyperparameterAttr hyper) const {
   std::optional<SmallVector<int64_t>> values =
       wave::resolveSymbolNames(getSymbolNames(), hyper);
@@ -178,7 +178,7 @@ wave::WaveDistributedShapeAttr::getResolvedShape(
   return wave::evaluateMapWithSymbols(getShape(), *values);
 }
 
-Attribute WaveDistributedShapeAttr::parse(AsmParser &parser, Type) {
+Attribute DistributedShapeAttr::parse(AsmParser &parser, Type) {
   if (parser.parseLess())
     return {};
 
@@ -239,7 +239,7 @@ Attribute WaveDistributedShapeAttr::parse(AsmParser &parser, Type) {
   return get(parser.getContext(), symbolNameAttrs, shape);
 }
 
-void WaveDistributedShapeAttr::print(mlir::AsmPrinter &printer) const {
+void DistributedShapeAttr::print(mlir::AsmPrinter &printer) const {
   // Print symbol names like: [M, K] -> ( ... )
   printer << "<[";
   llvm::SmallVector<llvm::StringRef> names;

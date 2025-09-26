@@ -123,13 +123,12 @@ MlirTypeID mlirWaveAddressSpaceAttrGetTypeID() {
 //===---------------------------------------------------------------------===//
 
 bool mlirAttributeIsAWaveDistributedShapeAttr(MlirAttribute attr) {
-  return llvm::isa<wave::WaveDistributedShapeAttr>(unwrap(attr));
+  return llvm::isa<wave::DistributedShapeAttr>(unwrap(attr));
 }
 
-MlirAttribute mlirWaveDistributedShapeAttrGet(MlirContext mlirCtx,
-                                              MlirAttribute *symbolNames,
+MlirAttribute mlirWaveDistributedShapeAttrGet(MlirAttribute *symbolNames,
                                               MlirAffineMap map) {
-  mlir::MLIRContext *ctx = unwrap(mlirCtx);
+  mlir::MLIRContext *ctx = unwrap(map).getContext();
 
   unsigned numSymbols = mlirAffineMapGetNumSymbols(map);
   llvm::SmallVector<wave::WaveSymbolAttr> symbolAttrs = llvm::map_to_vector(
@@ -138,10 +137,9 @@ MlirAttribute mlirWaveDistributedShapeAttrGet(MlirContext mlirCtx,
         return llvm::cast<wave::WaveSymbolAttr>(unwrap(attr));
       });
 
-  return wrap(
-      wave::WaveDistributedShapeAttr::get(ctx, symbolAttrs, unwrap(map)));
+  return wrap(wave::DistributedShapeAttr::get(ctx, symbolAttrs, unwrap(map)));
 }
 
 MlirTypeID mlirWaveDistributedShapeAttrGetTypeID() {
-  return wrap(mlir::TypeID::get<wave::WaveDistributedShapeAttr>());
+  return wrap(mlir::TypeID::get<wave::DistributedShapeAttr>());
 }

@@ -97,8 +97,8 @@ mlirAttributeIsAWaveDistributedShapeAttr(MlirAttribute attr);
 /// `symbolNames` list. The list must have as many entries as maps have symbols,
 /// and all maps must have the same number of symbols and zero dimensions. The
 /// list is expected to only contain WaveSymbolAttr instances.
-MLIR_CAPI_EXPORTED MlirAttribute mlirWaveDistributedShapeAttrGet(
-    MlirContext mlirCtx, MlirAttribute *symbolNames, MlirAffineMap map);
+MLIR_CAPI_EXPORTED MlirAttribute
+mlirWaveDistributedShapeAttrGet(MlirAttribute *symbolNames, MlirAffineMap map);
 
 /// Returns the typeID of a WaveDistributedShapeAttr.
 MLIR_CAPI_EXPORTED MlirTypeID mlirWaveDistributedShapeAttrGetTypeID();

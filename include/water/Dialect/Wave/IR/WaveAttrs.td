@@ -206,7 +206,7 @@ def WaveHyperparameterAttr : AttrDef<WaveDialect, "WaveHyperparameter"> {
 }
 
 
-def WaveDistributedShapeAttr : AttrDef<WaveDialect, "WaveDistributedShape"> {
+def WaveDistributedShapeAttr : AttrDef<WaveDialect, "DistributedShape"> {
   let mnemonic = "distributed_shape";
   let description = [{
     Distributed (physical) tensor shape as affine expressions over named

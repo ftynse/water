@@ -190,10 +190,7 @@ NB_MODULE(_waterDialects, m) {
       .def_classmethod(
           "get",
           [](const nb::object &cls, const std::vector<std::string> &symbolNames,
-             MlirAffineMap map,
-             // MlirContext should always come last to allow for being
-             // automatically deduced from context.
-             MlirContext context) {
+             MlirAffineMap map) {
             std::vector<MlirAttribute> symbolAttrs;
             intptr_t numSymbols = symbolNames.size();
             symbolAttrs.reserve(numSymbols);
@@ -201,8 +198,8 @@ NB_MODULE(_waterDialects, m) {
             for (const std::string &symbolName : symbolNames) {
               MlirStringRef symbolNameStrRef =
                   mlirStringRefCreate(symbolName.data(), symbolName.size());
-              MlirAttribute symbolAttr =
-                  mlirWaveSymbolAttrGet(context, symbolNameStrRef);
+              MlirAttribute symbolAttr = mlirWaveSymbolAttrGet(
+                  mlirAffineMapGetContext(map), symbolNameStrRef);
               symbolAttrs.push_back(symbolAttr);
             }
 
@@ -213,10 +210,9 @@ NB_MODULE(_waterDialects, m) {
             if (mlirAffineMapGetNumDims(map) != 0) {
               throw nb::value_error("Maps should not involve dimensions.");
             }
-            return cls(mlirWaveDistributedShapeAttrGet(
-                context, symbolAttrs.data(), map));
+            return cls(
+                mlirWaveDistributedShapeAttrGet(symbolAttrs.data(), map));
           },
           nb::arg("cls"), nb::arg("symbol_names"), nb::arg("map"),
-          nb::arg("context") = nb::none(),
           "Gets a wave.WaveDistributedShapeAttr from parameters.");
 }
