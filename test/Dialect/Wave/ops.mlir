@@ -105,15 +105,15 @@ func.func @register_with_symbols_complex_index() {
 func.func @register_with_symbols_empty_symbol_list() {
   %0 = arith.constant 0.0 : f32
   // CHECK: wave.register
-  %register = wave.register %0 index {B : [] -> (0, 1, 1)}
+  %register = wave.register %0 {ATTR = 10}
     : !wave.tensor<[@B] of f32, <register>>
   return
 }
 
 
 // CHECK-LABEL: @register_with_hyperparameter
-// CHECK-SAME:  wave.hyperparameters<{A = 100 : i64, B = 10 : i64}>
-func.func @register_with_hyperparameter() attributes {hyperparameters = #wave.hyperparameters<{A = 100, B = 10}>} {
+// CHECK-SAME:  wave.hyperparameters<{A = 100 : i64, B = 10 : i64, C = "STR"}>
+func.func @register_with_hyperparameter() attributes {hyperparameters = #wave.hyperparameters<{A = 100, B = 10, C = "STR"}>} {
   %0 = arith.constant 0.0 : f32
   // CHECK: wave.register
   %register = wave.register %0
@@ -132,4 +132,12 @@ func.func @allocate() -> !wave.tensor<[@M, @N] of bf16, <shared>> {
     : !wave.tensor<[@M, @N] of bf16, <shared>>
 
   return %buf : !wave.tensor<[@M, @N] of bf16, <shared>>
+}
+
+
+// CHECK-LABEL: @write_with_bounds
+// CHECK:       wave.read_write_bounds
+func.func @write_with_bounds(%mem: !wave.tensor<any of f32>, %val: !wave.tensor<any of f32, <register>>) {
+  wave.write %val, %mem { wave.read_write_bounds = { M = #wave.distributed_shape<[BLOCK_M, WG0, T0] -> (BLOCK_M * WG0 + (BLOCK_M * (T0 floordiv 64)) floordiv 2 + T0 mod 64)>} } : !wave.tensor<any of f32, <register>>, !wave.tensor<any of f32>
+  return
 }
