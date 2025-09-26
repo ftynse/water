@@ -80,18 +80,22 @@ materializeAffine(Location loc, ArrayRef<wave::WaveSymbolAttr> symbols,
 }
 
 static SmallVector<Value>
-buildStartIndices(Location loc, DictionaryAttr index, PatternRewriter &rewriter,
+buildStartIndices(Location loc, DictionaryAttr indexDict,
+                  ArrayRef<wave::WaveSymbolAttr> orderedSyms,
+                  PatternRewriter &rewriter,
                   wave::WaveHyperparameterAttr hyper) {
   SmallVector<Value> indices;
+  indices.reserve(orderedSyms.size());
+  // For each dimension in the memref (in order), find its corresponding start
+  // index by symbol
+  for (auto symAttr : orderedSyms) {
+    StringRef name = symAttr.getName();
+    Attribute a = indexDict.get(name);
+    assert(a && "index dict missing entry for dimension symbol");
+    auto mapAttr = cast<wave::WaveIndexMappingAttr>(a);
 
-  // TODO : The loop below currently builds `indices` using the iteration order
-  // of the dictionary which is not guaranteed to match the memref's logical
-  // dimension order
-  for (NamedAttribute dim : index) {
-    auto mapAttr = cast<wave::WaveIndexMappingAttr>(dim.getValue());
     FailureOr<SmallVector<Value>> startFo = materializeAffine(
         loc, mapAttr.getSymbolNames(), mapAttr.getStart(), rewriter, hyper);
-
     SmallVector<Value> start = std::move(*startFo);
     indices.push_back(start[0]); // start map has one result
   }
@@ -251,6 +255,9 @@ public:
       return rewriter.notifyMatchFailure(
           op, "expected memref base after conversion");
 
+    auto memoryType = cast<wave::WaveTensorType>(op.getMemory().getType());
+    ArrayRef<wave::WaveSymbolAttr> orderedSyms = memoryType.getShape();
+
     wave::DistributedShapeAttr boundsAttr = op.getBoundsAttr();
     DictionaryAttr index = op.getIndexAttr();
 
@@ -258,7 +265,8 @@ public:
         getHyperparametersFromConverter(getTypeConverter());
 
     // Build per-dimension start indices
-    SmallVector<Value> indices = buildStartIndices(loc, index, rewriter, hyper);
+    SmallVector<Value> indices =
+        buildStartIndices(loc, index, orderedSyms, rewriter, hyper);
 
     Value mask = buildMask(loc, boundsAttr, rewriter, index, hyper, indices,
                            elementsPerThread);
@@ -291,6 +299,9 @@ public:
     if (!vecType)
       return rewriter.notifyMatchFailure(op, "expected vector value to store");
 
+    auto memoryType = cast<wave::WaveTensorType>(op.getMemory().getType());
+    ArrayRef<wave::WaveSymbolAttr> orderedSyms = memoryType.getShape();
+
     int64_t elementsPerThread = vecType.getNumElements();
     wave::DistributedShapeAttr boundsAttr = op.getBoundsAttr();
     DictionaryAttr index = op.getIndexAttr();
@@ -298,7 +309,8 @@ public:
     wave::WaveHyperparameterAttr hyper =
         getHyperparametersFromConverter(getTypeConverter());
 
-    SmallVector<Value> indices = buildStartIndices(loc, index, rewriter, hyper);
+    SmallVector<Value> indices =
+        buildStartIndices(loc, index, orderedSyms, rewriter, hyper);
 
     // Build per-lane mask (or none)
     Value mask = buildMask(loc, boundsAttr, rewriter, index, hyper, indices,
