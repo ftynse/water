@@ -196,3 +196,49 @@ func.func @lower_read(%mem: !wave.tensor<[@X] of f16, <global>>) attributes {wav
   return
   }
 }
+
+// -----
+
+module attributes {wave.normal_form = #wave.normal_form<full_types>} {
+  // CHECK-LABEL: @lower_read_masked
+  func.func @lower_read_masked(%mem: !wave.tensor<[@M, @N] of f16, <global>>)
+      attributes {wave.hyperparameters = #wave.hyperparameters<{BLOCK_M = 64, BLOCK_N = 64, M = 100, N = 50}, L=4>} {
+
+    %v = wave.read %mem
+      index { M : [WG0, T0] -> (WG0 * BLOCK_M + T0, 1, 64), N : [WG1, T1] -> (WG1 * BLOCK_N + T1 * 32, 64, 1)
+      } { bounds = { M = #wave.distributed_shape<[M] -> (M)>,N = #wave.distributed_shape<[N] -> (N)>} }
+      : (!wave.tensor<[@M, @N] of f16, <global>>) -> !wave.tensor<[@L] of f16, <register>>
+
+    return
+  }
+}
+
+// CHECK-DAG: #[[MAP_ROW:.*]] = affine_map<()[s0, s1] -> (s1 * 64 + s0)>
+// CHECK-DAG: #[[MAP_COL:.*]] = affine_map<()[s0, s1] -> (s1 * 64 + s0 * 32)>
+
+// ids
+// CHECK: %[[TIDX_X:.*]] = gpu.thread_id x
+// CHECK: %[[BIDX_X:.*]] = gpu.block_id  x
+// CHECK: %[[TIDX_Y:.*]] = gpu.thread_id y
+// CHECK: %[[BIDX_Y:.*]] = gpu.block_id  y
+
+// start indices
+// CHECK: %[[ROW:.*]] = affine.apply #[[MAP_ROW]]()[%[[TIDX_X]], %[[BIDX_X]]]
+// CHECK: %[[COL:.*]] = affine.apply #[[MAP_COL]]()[%[[BIDX_Y]], %[[TIDX_Y]]]
+
+// lane-wise offsets
+// CHECK: %[[STEP:.+]] = arith.constant dense<{{\[[^]]+\]}}> : vector<4xindex>
+// CHECK: %[[COLV:.*]] = vector.broadcast %[[COL]] : index to vector<4xindex>
+// CHECK: %[[LANEIDX:.*]] = arith.addi %[[COLV]], %[[STEP]] : vector<4xindex>
+
+
+// CHECK: %[[COLBOUNDV:.*]] = vector.broadcast {{.*}} : index to vector<4xindex>
+// CHECK: %[[CMP0:.*]] = arith.cmpi slt, %[[LANEIDX]], %[[COLBOUNDV]] : vector<4xindex>
+
+
+// CHECK: %[[CMP1S:.*]] = arith.cmpi slt, %[[ROW]], {{.*}} : index
+// CHECK: %[[CMP1:.*]] = vector.broadcast %[[CMP1S]] : i1 to vector<4xi1>
+
+// AND and masked load
+// CHECK: %[[MASK:.*]] = arith.andi %[[CMP0]], %[[CMP1]] : vector<4xi1>
+// CHECK: %[[RES:.*]] = vector.maskedload {{.*}}\[%[[ROW]], %[[COL]]\], %[[MASK]], {{.*}} : {{.*}}, vector<4xi1>, vector<4xf16> into vector<4xf16>

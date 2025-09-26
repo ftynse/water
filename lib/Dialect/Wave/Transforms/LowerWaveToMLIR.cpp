@@ -8,6 +8,7 @@
 #include "water/Dialect/Wave/IR/WaveDialect.h"
 #include "water/Dialect/Wave/Transforms/Passes.h"
 
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
@@ -30,9 +31,9 @@ struct LowerWaveToMLIRPass
     : public ::impl::LowerWaveToMLIRPassBase<LowerWaveToMLIRPass> {
   using LowerWaveToMLIRPassBase::LowerWaveToMLIRPassBase;
 
-  void getDependentDialects(mlir::DialectRegistry &registry) const override {
-    registry.insert<mlir::gpu::GPUDialect, mlir::memref::MemRefDialect,
-                    mlir::arith::ArithDialect>();
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<gpu::GPUDialect, memref::MemRefDialect, arith::ArithDialect,
+                    vector::VectorDialect, affine::AffineDialect>();
   }
 
   void runOnOperation() override {
@@ -46,7 +47,8 @@ struct LowerWaveToMLIRPass
 
     ConversionTarget target(*ctx);
     target.addLegalDialect<arith::ArithDialect, vector::VectorDialect,
-                           memref::MemRefDialect, gpu::GPUDialect>();
+                           memref::MemRefDialect, gpu::GPUDialect,
+                           affine::AffineDialect>();
     target.addIllegalOp<wave::RegisterOp, wave::AllocateOp>();
     ConversionConfig config;
     config.allowPatternRollback = false;
