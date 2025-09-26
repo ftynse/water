@@ -79,6 +79,10 @@ materializeAffine(Location loc, ArrayRef<wave::WaveSymbolAttr> symbols,
   return results;
 }
 
+/// Build per-dimension start indices in the order specified by `orderedSyms`
+/// (the Wave tensor’s dim order). For each symbol name in `orderedSyms`, this
+/// looks up a WaveIndexMappingAttr in `indexDict`, materializes its `start`
+/// map and returns one index-typed Value per dimension
 static SmallVector<Value>
 buildStartIndices(Location loc, DictionaryAttr indexDict,
                   ArrayRef<wave::WaveSymbolAttr> orderedSyms,
@@ -86,8 +90,6 @@ buildStartIndices(Location loc, DictionaryAttr indexDict,
                   wave::WaveHyperparameterAttr hyper) {
   SmallVector<Value> indices;
   indices.reserve(orderedSyms.size());
-  // For each dimension in the memref (in order), find its corresponding start
-  // index by symbol
   for (auto symAttr : orderedSyms) {
     StringRef name = symAttr.getName();
     Attribute a = indexDict.get(name);
@@ -102,8 +104,9 @@ buildStartIndices(Location loc, DictionaryAttr indexDict,
   return indices;
 }
 
-// Pick the vectorized (fastest) dimension based on the per-dimension SIZE
-// from the index attribute. (largest size wins; tie → last dim)
+/// Select the dimension that is most contiguous in memory to drive vectorized
+/// loads/stores. Uses the per-dimension size from the index mapping to estimate
+/// how much of that dimension this thread can cover.
 static int64_t findFastestDimBySize(DictionaryAttr indexDict,
                                     wave::WaveHyperparameterAttr hyper) {
 
@@ -129,7 +132,8 @@ static int64_t findFastestDimBySize(DictionaryAttr indexDict,
 }
 
 /// Build a per-thread mask
-///  mask = AND_d ( idx_d(lane) < bound_d )
+///  mask = AND_d ( id_start_d(elements_per_thread) <
+///  bound_d(elements_per_thread))
 static Value buildMask(Location loc, DictionaryAttr boundsDict,
                        ArrayRef<wave::WaveSymbolAttr> orderedSyms,
                        PatternRewriter &rewriter, DictionaryAttr indexDict,
@@ -269,7 +273,6 @@ public:
     wave::WaveHyperparameterAttr hyper =
         getHyperparametersFromConverter(getTypeConverter());
 
-    // Build per-dimension start indices
     SmallVector<Value> startIndices =
         buildStartIndices(loc, indexDict, orderedSyms, rewriter, hyper);
 
@@ -317,7 +320,6 @@ public:
     SmallVector<Value> indices =
         buildStartIndices(loc, indexDict, orderedSyms, rewriter, hyper);
 
-    // Build per-lane mask (or none)
     Value mask = buildMask(loc, boundsDict, orderedSyms, rewriter, indexDict,
                            hyper, indices, elementsPerThread);
 
