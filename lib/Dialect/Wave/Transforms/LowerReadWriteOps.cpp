@@ -130,12 +130,13 @@ static int64_t findFastestDimBySize(DictionaryAttr indexDict,
 
 /// Build a per-thread mask
 ///  mask = AND_d ( idx_d(lane) < bound_d )
-static Value buildMask(Location loc, wave::DistributedShapeAttr boundsAttr,
+static Value buildMask(Location loc, DictionaryAttr boundsDict,
+                       ArrayRef<wave::WaveSymbolAttr> orderedSyms,
                        PatternRewriter &rewriter, DictionaryAttr indexDict,
                        wave::WaveHyperparameterAttr hyper,
                        ArrayRef<Value> startIdx, int64_t elementsPerThread) {
 
-  if (!boundsAttr)
+  if (!boundsDict)
     return Value();
 
   const int64_t rank = static_cast<int64_t>(startIdx.size());
@@ -155,15 +156,19 @@ static Value buildMask(Location loc, wave::DistributedShapeAttr boundsAttr,
       loc, vecIdxType, startIdx[fastestDim]);
   Value laneIdxFast = rewriter.create<arith::AddIOp>(loc, startFastVec, iota);
 
-  // Materialize bounds
-  FailureOr<SmallVector<Value>> boundValsFo = materializeAffine(
-      loc, boundsAttr.getSymbolNames(), boundsAttr.getShape(), rewriter, hyper);
-  SmallVector<Value> boundVals = std::move(*boundValsFo);
-
   // finalMask is the AND of per-dimension bound checks
   Value finalMask;
   for (int64_t d = 0; d < rank; ++d) {
-    Value bound = boundVals[d];
+    StringRef name = orderedSyms[d].getName();
+    Attribute a = boundsDict.get(name);
+    assert(a && "bounds dict missing entry for dimension symbol");
+    auto boundAttr = cast<wave::DistributedShapeAttr>(a);
+    // Materialize bounds
+    FailureOr<SmallVector<Value>> boundValsFo = materializeAffine(
+        loc, boundAttr.getSymbolNames(), boundAttr.getShape(), rewriter, hyper);
+    SmallVector<Value> boundVals = std::move(*boundValsFo);
+    Value bound = boundVals[0];
+
     Value clause;
     if (d == fastestDim) {
       // lane-wise compare: (start + iota) < bound
@@ -258,21 +263,21 @@ public:
     auto memoryType = cast<wave::WaveTensorType>(op.getMemory().getType());
     ArrayRef<wave::WaveSymbolAttr> orderedSyms = memoryType.getShape();
 
-    wave::DistributedShapeAttr boundsAttr = op.getBoundsAttr();
-    DictionaryAttr index = op.getIndexAttr();
+    DictionaryAttr boundsDict = op.getBoundsAttr();
+    DictionaryAttr indexDict = op.getIndexAttr();
 
     wave::WaveHyperparameterAttr hyper =
         getHyperparametersFromConverter(getTypeConverter());
 
     // Build per-dimension start indices
-    SmallVector<Value> indices =
-        buildStartIndices(loc, index, orderedSyms, rewriter, hyper);
+    SmallVector<Value> startIndices =
+        buildStartIndices(loc, indexDict, orderedSyms, rewriter, hyper);
 
-    Value mask = buildMask(loc, boundsAttr, rewriter, index, hyper, indices,
-                           elementsPerThread);
+    Value mask = buildMask(loc, boundsDict, orderedSyms, rewriter, indexDict,
+                           hyper, startIndices, elementsPerThread);
 
     Value readOp =
-        buildVectorRead(loc, rewriter, base, indices, vectorType, mask);
+        buildVectorRead(loc, rewriter, base, startIndices, vectorType, mask);
 
     rewriter.replaceOp(op, readOp);
 
@@ -303,18 +308,18 @@ public:
     ArrayRef<wave::WaveSymbolAttr> orderedSyms = memoryType.getShape();
 
     int64_t elementsPerThread = vecType.getNumElements();
-    wave::DistributedShapeAttr boundsAttr = op.getBoundsAttr();
-    DictionaryAttr index = op.getIndexAttr();
+    DictionaryAttr boundsDict = op.getBoundsAttr();
+    DictionaryAttr indexDict = op.getIndexAttr();
 
     wave::WaveHyperparameterAttr hyper =
         getHyperparametersFromConverter(getTypeConverter());
 
     SmallVector<Value> indices =
-        buildStartIndices(loc, index, orderedSyms, rewriter, hyper);
+        buildStartIndices(loc, indexDict, orderedSyms, rewriter, hyper);
 
     // Build per-lane mask (or none)
-    Value mask = buildMask(loc, boundsAttr, rewriter, index, hyper, indices,
-                           elementsPerThread);
+    Value mask = buildMask(loc, boundsDict, orderedSyms, rewriter, indexDict,
+                           hyper, indices, elementsPerThread);
 
     buildVectorWrite(loc, rewriter, base, indices, vec, mask);
 

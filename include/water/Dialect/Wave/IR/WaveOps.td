@@ -232,7 +232,7 @@ def ReadOp : WaveOp<"read", [
 
   let arguments = !con((ins
     Arg<WaveTensorInMemory, "Tensor representing memory to read from">:$memory,
-    Arg<OptionalAttr<WaveDistributedShapeAttr>, "Bounds for building mask">:$bounds
+    Arg<OptionalAttr<DictionaryAttr>, "Bounds for building mask">:$bounds
   ), commonArguments);
 
   let results = (outs
@@ -241,6 +241,7 @@ def ReadOp : WaveOp<"read", [
 
   let assemblyFormat = "$memory " # commonArgumentsSyntax # "attr-dict `:` "
                        "functional-type(operands, results)";
+  let hasVerifier = 1;
 }
 
 def RegisterOp : WaveOp<"register", [
@@ -279,12 +280,14 @@ def WriteOp : WaveOp<"write", [
   let arguments = !con((ins
     Arg<WaveTensorInRegister, "Value to write">:$value_to_store,
     Arg<WaveTensorInMemory, "Tensor representing memory to write into">:$memory,
-    Arg<OptionalAttr<WaveDistributedShapeAttr>, "Bounds for building mask">:$bounds
+    Arg<OptionalAttr<DictionaryAttr>, "Bounds for building mask">:$bounds
   ), commonArguments);
 
   let assemblyFormat =
     "$value_to_store `,` $memory " # commonArgumentsSyntax # "attr-dict `:`"
     "type($value_to_store) `,` type($memory)";
+
+   let hasVerifier = 1;
 }
 
 #endif // WATER_DIALECT_WAVE_WAVEOPS
