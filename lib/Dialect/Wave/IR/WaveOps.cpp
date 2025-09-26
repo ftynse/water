@@ -293,6 +293,29 @@ LogicalResult MmaOp::verify() {
 }
 
 //-----------------------------------------------------------------------------
+// ReadOp
+//-----------------------------------------------------------------------------
+
+LogicalResult ReadOp::verify() {
+  Attribute bounds = getBoundsAttr(); // Optional
+  if (!bounds)
+    return success();
+
+  auto dict = dyn_cast<DictionaryAttr>(bounds);
+  if (!dict)
+    return emitOpError("'bounds' must be a dictionary");
+
+  for (NamedAttribute value : dict) {
+    // Value type must be WaveDistributedShapeAttr
+    if (!dyn_cast<wave::DistributedShapeAttr>(value.getValue()))
+      return emitOpError()
+             << "'bounds' values must be WaveDistributedShapeAttr, got "
+             << value.getValue();
+  }
+  return success();
+}
+
+//-----------------------------------------------------------------------------
 // RegisterOp
 //-----------------------------------------------------------------------------
 
@@ -307,6 +330,29 @@ mlir::LogicalResult wave::RegisterOp::verify() {
     return emitOpError() << "expected fully-specified tensor type";
   }
   return mlir::success();
+}
+
+//-----------------------------------------------------------------------------
+// WriteOp
+//-----------------------------------------------------------------------------
+
+LogicalResult WriteOp::verify() {
+  Attribute bounds = getBoundsAttr(); // Optional
+  if (!bounds)
+    return success();
+
+  auto dict = dyn_cast<DictionaryAttr>(bounds);
+  if (!dict)
+    return emitOpError("'bounds' must be a dictionary");
+
+  for (NamedAttribute value : dict) {
+    // Value type must be WaveDistributedShapeAttr
+    if (!dyn_cast<wave::DistributedShapeAttr>(value.getValue()))
+      return emitOpError()
+             << "'bounds' values must be WaveDistributedShapeAttr, got "
+             << value.getValue();
+  }
+  return success();
 }
 
 //-----------------------------------------------------------------------------
