@@ -34,6 +34,10 @@ public:
                               mlir::AffineMap shape, mlir::Type elementType,
                               wave::WaveAddressSpace addressSpace) const;
 
+  wave::WaveHyperparameterAttr getHyperparameters() const {
+    return hyperParameters;
+  }
+
 private:
   wave::WaveHyperparameterAttr hyperParameters;
 };
@@ -49,6 +53,11 @@ void populateWaveBinaryOpLoweringPatterns(WaveTypeConverter &typeConverter,
 // Adds pattern that lowers 'wave.allocate' ops to upstream MLIR ops.
 void populateWaveAllocateOpLoweringPatterns(WaveTypeConverter &typeConverter,
                                             mlir::RewritePatternSet &patterns);
+
+// Adds pattern that lowers 'wave.read' and 'wave.write' ops to upstream MLIR
+// ops.
+void populateWaveReadWriteLoweringPatterns(WaveTypeConverter &typeConverter,
+                                           mlir::RewritePatternSet &patterns);
 
 } // namespace wave
 
