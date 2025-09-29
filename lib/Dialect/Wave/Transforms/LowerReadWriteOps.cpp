@@ -90,7 +90,7 @@ buildStartIndices(Location loc, DictionaryAttr indexDict,
                   wave::WaveHyperparameterAttr hyper) {
   SmallVector<Value> indices;
   indices.reserve(orderedSyms.size());
-  for (auto symAttr : orderedSyms) {
+  for (wave::WaveSymbolAttr symAttr : orderedSyms) {
     StringRef name = symAttr.getName();
     Attribute a = indexDict.get(name);
     assert(a && "index dict missing entry for dimension symbol");
@@ -269,6 +269,9 @@ public:
 
     DictionaryAttr boundsDict = op.getBoundsAttr();
     DictionaryAttr indexDict = op.getIndexAttr();
+    if (!indexDict)
+      return rewriter.notifyMatchFailure(
+          op, "cannot lower without 'index' attribute");
 
     wave::WaveHyperparameterAttr hyper =
         getHyperparametersFromConverter(getTypeConverter());
