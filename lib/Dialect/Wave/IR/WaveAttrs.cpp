@@ -171,11 +171,7 @@ bool WaveHyperparameterAttr::hasSymbol(StringRef symbolName) const {
 std::optional<llvm::SmallVector<int64_t>>
 wave::DistributedShapeAttr::getResolvedShape(
     wave::WaveHyperparameterAttr hyper) const {
-  std::optional<SmallVector<int64_t>> values =
-      wave::resolveSymbolNames(getSymbolNames(), hyper);
-  if (!values)
-    return std::nullopt;
-  return wave::evaluateMapWithSymbols(getShape(), *values);
+  return wave::evaluateMapWithHyperparams(getShape(), getSymbolNames(), hyper);
 }
 
 Attribute DistributedShapeAttr::parse(AsmParser &parser, Type) {

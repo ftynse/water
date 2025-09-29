@@ -25,11 +25,14 @@ std::optional<llvm::SmallVector<int64_t>>
 resolveSymbolNames(llvm::ArrayRef<wave::WaveSymbolAttr> names,
                    wave::WaveHyperparameterAttr hyper);
 
-/// Substitute symbolValues[i] into `map`, fold each result, and return the
-/// constant extents.
+/// Substitute named symbol values used in the affine map by the constant values
+/// defined in the hyperparameter list. Return nullopt if the substitution
+/// doesn't yield constant results, in particular, if some symbols are not
+/// defined.
 std::optional<llvm::SmallVector<int64_t>>
-evaluateMapWithSymbols(mlir::AffineMap map,
-                       llvm::ArrayRef<int64_t> symbolValues);
+evaluateMapWithHyperparams(mlir::AffineMap map,
+                           llvm::ArrayRef<wave::WaveSymbolAttr> symbolNames,
+                           wave::WaveHyperparameterAttr hyperparams);
 } // namespace wave
 
 #endif // WATER_DIALECT_WAVE_IR_WAVEUTILS_H
