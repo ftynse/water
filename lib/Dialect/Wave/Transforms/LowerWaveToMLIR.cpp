@@ -32,8 +32,15 @@ struct LowerWaveToMLIRPass
   using LowerWaveToMLIRPassBase::LowerWaveToMLIRPassBase;
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<gpu::GPUDialect, memref::MemRefDialect, arith::ArithDialect,
-                    vector::VectorDialect, affine::AffineDialect>();
+    registry.insert<
+        // clang-format off
+      affine::AffineDialect,
+      arith::ArithDialect,
+      gpu::GPUDialect,
+      memref::MemRefDialect,
+      vector::VectorDialect
+        // clang-format on
+        >();
   }
 
   void runOnOperation() override {
@@ -46,10 +53,16 @@ struct LowerWaveToMLIRPass
       return signalPassFailure();
 
     ConversionTarget target(*ctx);
-    target.addLegalDialect<arith::ArithDialect, vector::VectorDialect,
-                           memref::MemRefDialect, gpu::GPUDialect,
-                           affine::AffineDialect>();
-    target.addIllegalOp<wave::RegisterOp, wave::AllocateOp>();
+    target.addLegalDialect<
+        // clang-format off
+      affine::AffineDialect,
+      arith::ArithDialect,
+      gpu::GPUDialect,
+      memref::MemRefDialect,
+      vector::VectorDialect
+        // clang-format on
+        >();
+    target.addIllegalOp<wave::AllocateOp, wave::RegisterOp>();
     ConversionConfig config;
     config.allowPatternRollback = false;
 

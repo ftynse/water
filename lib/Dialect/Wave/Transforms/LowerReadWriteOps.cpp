@@ -69,7 +69,7 @@ materializeAffine(Location loc, ArrayRef<wave::WaveSymbolAttr> symbols,
   for (AffineExpr expr : map.getResults()) {
     AffineMap submap =
         AffineMap::get(map.getNumDims(), map.getNumSymbols(), expr);
-    llvm::SmallVector<Value> symVals = baseSymVals;
+    SmallVector<Value> symVals = baseSymVals;
     affine::canonicalizeMapAndOperands(&submap, &symVals);
 
     Value apply = rewriter.create<affine::AffineApplyOp>(loc, submap, symVals);
@@ -83,7 +83,7 @@ materializeAffine(Location loc, ArrayRef<wave::WaveSymbolAttr> symbols,
 /// (the Wave tensor’s dim order). For each symbol name in `orderedSyms`, this
 /// looks up a WaveIndexMappingAttr in `indexDict`, materializes its `start`
 /// map and returns one index-typed Value per dimension
-static SmallVector<Value>
+static FailureOr<SmallVector<Value>>
 buildStartIndices(Location loc, DictionaryAttr indexDict,
                   ArrayRef<wave::WaveSymbolAttr> orderedSyms,
                   PatternRewriter &rewriter,
@@ -98,32 +98,37 @@ buildStartIndices(Location loc, DictionaryAttr indexDict,
 
     FailureOr<SmallVector<Value>> startFo = materializeAffine(
         loc, mapAttr.getSymbolNames(), mapAttr.getStart(), rewriter, hyper);
+    if (failed(startFo))
+      return failure();
     SmallVector<Value> start = std::move(*startFo);
-    indices.push_back(start[0]); // start map has one result
+    indices.push_back(start[0]); // Start map has one result.
   }
   return indices;
 }
 
-/// Select the dimension that is most contiguous in memory to drive vectorized
-/// loads/stores. Uses the per-dimension size from the index mapping to estimate
-/// how much of that dimension this thread can cover.
-static int64_t findFastestDimBySize(DictionaryAttr indexDict,
-                                    wave::WaveHyperparameterAttr hyper) {
-
-  SmallVector<NamedAttribute> entries(indexDict.begin(), indexDict.end());
-  int64_t bestIdx = -1;
+/// Find the index of a dimension with the largest step as specified by the
+/// indexing expression, after substituting the provided hyperparameters. In
+/// case of a tie, take the dimension that is farther in the index dictionary,
+/// which is secretly a list.
+static std::optional<uint64_t>
+findDimWithLargestStep(DictionaryAttr indexDict,
+                       wave::WaveHyperparameterAttr hyper) {
+  uint64_t bestIdx = -1;
   std::optional<int64_t> bestSize; // largest constant size seen so far
 
-  for (int64_t i = 0, e = (int64_t)entries.size(); i < e; ++i) {
-    auto mapAttr =
-        llvm::cast<wave::WaveIndexMappingAttr>(entries[i].getValue());
-    std::optional<llvm::SmallVector<int64_t>> vals =
+  for (auto &&[i, entry] : llvm::enumerate(indexDict)) {
+    auto mapAttr = cast<wave::WaveIndexMappingAttr>(entry.getValue());
+    std::optional<SmallVector<int64_t>> vals =
         wave::resolveSymbolNames(mapAttr.getSymbolNames(), hyper);
-    std::optional<llvm::SmallVector<int64_t>> folded =
+    if (!vals)
+      return std::nullopt;
+    std::optional<SmallVector<int64_t>> folded =
         wave::evaluateMapWithSymbols(mapAttr.getStep(), *vals);
+    if (!folded)
+      return std::nullopt;
     int64_t size = (*folded)[0];
 
-    if (!bestSize || size > *bestSize || (size == *bestSize && i > bestIdx)) {
+    if (!bestSize || size >= *bestSize) {
       bestSize = size;
       bestIdx = i;
     }
@@ -131,21 +136,31 @@ static int64_t findFastestDimBySize(DictionaryAttr indexDict,
   return bestIdx;
 }
 
-/// Build a per-thread mask
-///  mask = AND_d ( id_start_d(elements_per_thread) <
-///  bound_d(elements_per_thread))
-static Value buildMask(Location loc, DictionaryAttr boundsDict,
-                       ArrayRef<wave::WaveSymbolAttr> orderedSyms,
-                       PatternRewriter &rewriter, DictionaryAttr indexDict,
-                       wave::WaveHyperparameterAttr hyper,
-                       ArrayRef<Value> startIdx, int64_t elementsPerThread) {
-
+/// Build a per-thread mask:
+///
+///   mask = AND_d ( id_start_d(elements_per_thread) <
+///                  bound_d(elements_per_thread))
+///          foreach d in dimensions.
+///
+/// whenever a bounds dictionary is provided. When it is not provided, return a
+/// null mask. If the vectorized dimension cannot be identified, return failure.
+static FailureOr<Value>
+buildMask(Location loc, DictionaryAttr boundsDict,
+          ArrayRef<wave::WaveSymbolAttr> orderedSyms, PatternRewriter &rewriter,
+          DictionaryAttr indexDict, wave::WaveHyperparameterAttr hyper,
+          ArrayRef<Value> startIdx, int64_t elementsPerThread) {
   if (!boundsDict)
     return Value();
 
   const int64_t rank = static_cast<int64_t>(startIdx.size());
 
-  int64_t fastestDim = findFastestDimBySize(indexDict, hyper);
+  // This logic operates after the "expansion" pass that usually unrolls all
+  // tensor dimensions but one so the extent along them is 1. The dimension with
+  // non-unit extent is considered to be vectorized.
+  std::optional<uint64_t> vectorizedDim =
+      findDimWithLargestStep(indexDict, hyper);
+  if (!vectorizedDim.has_value())
+    return failure();
 
   IndexType idxType = rewriter.getIndexType();
   VectorType vecIdxType = VectorType::get({elementsPerThread}, idxType);
@@ -153,11 +168,11 @@ static Value buildMask(Location loc, DictionaryAttr boundsDict,
   VectorType maskType = VectorType::get({elementsPerThread}, i1Type);
 
   // iota [0..L-1] : vector<index>
-  Value iota = rewriter.create<mlir::vector::StepOp>(loc, vecIdxType);
+  Value iota = rewriter.create<vector::StepOp>(loc, vecIdxType);
 
   // Lane indices for fastest dim: start + iota
   Value startFastVec = rewriter.create<vector::BroadcastOp>(
-      loc, vecIdxType, startIdx[fastestDim]);
+      loc, vecIdxType, startIdx[*vectorizedDim]);
   Value laneIdxFast = rewriter.create<arith::AddIOp>(loc, startFastVec, iota);
 
   // finalMask is the AND of per-dimension bound checks
@@ -174,7 +189,7 @@ static Value buildMask(Location loc, DictionaryAttr boundsDict,
     Value bound = boundVals[0];
 
     Value clause;
-    if (d == fastestDim) {
+    if (d == vectorizedDim) {
       // lane-wise compare: (start + iota) < bound
       Value boundVec =
           rewriter.create<vector::BroadcastOp>(loc, vecIdxType, bound);
@@ -196,6 +211,7 @@ static Value buildMask(Location loc, DictionaryAttr boundsDict,
   return finalMask;
 }
 
+/// Build a read or a mask read operation based on presence of a mask.
 static Value buildVectorRead(Location loc, PatternRewriter &rewriter, Value mem,
                              ArrayRef<Value> indices, VectorType vecType,
                              Value mask) {
@@ -221,6 +237,7 @@ static Value buildVectorRead(Location loc, PatternRewriter &rewriter, Value mem,
                                                passthrough);
 }
 
+/// Build a write or a masked write operation based on presence of a mask.
 static void buildVectorWrite(Location loc, PatternRewriter &rewriter, Value mem,
                              ArrayRef<Value> indices, Value vecValue,
                              Value mask) {
@@ -231,8 +248,9 @@ static void buildVectorWrite(Location loc, PatternRewriter &rewriter, Value mem,
   }
 }
 
-wave::WaveHyperparameterAttr
-getHyperparametersFromConverter(const mlir::TypeConverter *base) {
+/// Extract hyperparameters from a Wave type converter instance.
+static wave::WaveHyperparameterAttr
+getHyperparametersFromConverter(const TypeConverter *base) {
   auto &tc = static_cast<const wave::WaveTypeConverter &>(*base);
   return tc.getHyperparameters();
 }
@@ -259,11 +277,6 @@ public:
     int64_t elementsPerThread = vectorType.getNumElements();
 
     Value base = adaptor.getMemory();
-    auto memrefTy = cast<MemRefType>(base.getType());
-    if (!memrefTy)
-      return rewriter.notifyMatchFailure(
-          op, "expected memref base after conversion");
-
     auto memoryType = cast<wave::WaveTensorType>(op.getMemory().getType());
     ArrayRef<wave::WaveSymbolAttr> orderedSyms = memoryType.getShape();
 
@@ -276,14 +289,21 @@ public:
     wave::WaveHyperparameterAttr hyper =
         getHyperparametersFromConverter(getTypeConverter());
 
-    SmallVector<Value> startIndices =
+    FailureOr<SmallVector<Value>> startIndices =
         buildStartIndices(loc, indexDict, orderedSyms, rewriter, hyper);
+    if (failed(startIndices))
+      return rewriter.notifyMatchFailure(
+          op, "failed to convert start indices to affine");
 
-    Value mask = buildMask(loc, boundsDict, orderedSyms, rewriter, indexDict,
-                           hyper, startIndices, elementsPerThread);
+    FailureOr<Value> mask =
+        buildMask(loc, boundsDict, orderedSyms, rewriter, indexDict, hyper,
+                  *startIndices, elementsPerThread);
+    if (failed(mask))
+      return rewriter.notifyMatchFailure(op,
+                                         "couldn't build the required mask");
 
     Value readOp =
-        buildVectorRead(loc, rewriter, base, startIndices, vectorType, mask);
+        buildVectorRead(loc, rewriter, base, *startIndices, vectorType, *mask);
 
     rewriter.replaceOp(op, readOp);
 
@@ -301,32 +321,35 @@ public:
     Location loc = op.getLoc();
 
     Value base = adaptor.getMemory();
-    auto memrefTy = cast<MemRefType>(base.getType());
-    if (!memrefTy)
-      return rewriter.notifyMatchFailure(op, "expected converted memref");
-
     Value vec = adaptor.getValueToStore();
     auto vecType = cast<VectorType>(vec.getType());
-    if (!vecType)
-      return rewriter.notifyMatchFailure(op, "expected vector value to store");
-
     auto memoryType = cast<wave::WaveTensorType>(op.getMemory().getType());
     ArrayRef<wave::WaveSymbolAttr> orderedSyms = memoryType.getShape();
 
     int64_t elementsPerThread = vecType.getNumElements();
     DictionaryAttr boundsDict = op.getBoundsAttr();
     DictionaryAttr indexDict = op.getIndexAttr();
+    if (!indexDict)
+      return rewriter.notifyMatchFailure(
+          op, "cannot lower without 'index' attribute");
 
     wave::WaveHyperparameterAttr hyper =
         getHyperparametersFromConverter(getTypeConverter());
 
-    SmallVector<Value> indices =
+    FailureOr<SmallVector<Value>> indices =
         buildStartIndices(loc, indexDict, orderedSyms, rewriter, hyper);
+    if (failed(indices))
+      return rewriter.notifyMatchFailure(
+          op, "failed to convert start indices to affine");
 
-    Value mask = buildMask(loc, boundsDict, orderedSyms, rewriter, indexDict,
-                           hyper, indices, elementsPerThread);
+    FailureOr<Value> mask =
+        buildMask(loc, boundsDict, orderedSyms, rewriter, indexDict, hyper,
+                  *indices, elementsPerThread);
+    if (failed(mask))
+      return rewriter.notifyMatchFailure(op,
+                                         "couldn't build the required mask");
 
-    buildVectorWrite(loc, rewriter, base, indices, vec, mask);
+    buildVectorWrite(loc, rewriter, base, *indices, vec, *mask);
 
     rewriter.eraseOp(op);
     return success();

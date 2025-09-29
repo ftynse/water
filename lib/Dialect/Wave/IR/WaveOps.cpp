@@ -15,6 +15,7 @@
 #include "water/Dialect/Wave/IR/WaveInterfaces.h"
 #include "water/Dialect/Wave/IR/WaveTypes.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringSet.h"
 
 //-----------------------------------------------------------------------------
 // Custom parsing and printing hooks. These must be defined before including the
@@ -296,23 +297,54 @@ LogicalResult MmaOp::verify() {
 // ReadOp
 //-----------------------------------------------------------------------------
 
+static LogicalResult verifyReadWriteBounds(Location loc,
+                                           wave::WaveTensorType boundedType,
+                                           DictionaryAttr bounds) {
+  assert(bounds && "expected non-null bounds");
+  assert(boundedType && "expected non-null type");
+
+  // We need a fixed iteration order of names for determinism of error messages,
+  // so using a vector instead of a StringSet.
+  // TODO: consider refactoring bounds and other dictionary-like attributes to
+  // be indexed by symbol expressions rather than string attributes to avoid
+  // string comparisons everywhere.
+  SmallVector<StringRef> requiredSymbolNames = llvm::map_to_vector(
+      boundedType.getShape(),
+      [](wave::WaveSymbolAttr symbol) { return symbol.getName(); });
+  llvm::StringSet<> knownSymbolNames;
+  for (NamedAttribute value : bounds) {
+    if (!llvm::is_contained(requiredSymbolNames, value.getName().strref())) {
+      return emitError(loc)
+             << "'bounds' specified for a symbol '" << value.getName()
+             << "' not used in the "
+                "indexed memory tensor";
+    }
+
+    // Value type must be WaveDistributedShapeAttr.
+    if (!isa<wave::DistributedShapeAttr>(value.getValue()))
+      return emitError(loc)
+             << "'bounds' values must be WaveDistributedShapeAttr, got "
+             << value.getValue();
+
+    knownSymbolNames.insert(value.getName().strref());
+  }
+  for (StringRef requiredName : requiredSymbolNames) {
+    if (knownSymbolNames.contains(requiredName))
+      continue;
+
+    return emitError(loc) << "bounds not provided for memory tensor symbol '"
+                          << requiredName << "'";
+  }
+
+  return success();
+}
+
 LogicalResult ReadOp::verify() {
-  Attribute bounds = getBoundsAttr(); // Optional
+  DictionaryAttr bounds = getBounds().value_or(DictionaryAttr());
   if (!bounds)
     return success();
 
-  auto dict = dyn_cast<DictionaryAttr>(bounds);
-  if (!dict)
-    return emitOpError("'bounds' must be a dictionary");
-
-  for (NamedAttribute value : dict) {
-    // Value type must be WaveDistributedShapeAttr
-    if (!dyn_cast<wave::DistributedShapeAttr>(value.getValue()))
-      return emitOpError()
-             << "'bounds' values must be WaveDistributedShapeAttr, got "
-             << value.getValue();
-  }
-  return success();
+  return verifyReadWriteBounds(getLoc(), getMemory().getType(), bounds);
 }
 
 //-----------------------------------------------------------------------------
@@ -337,22 +369,11 @@ mlir::LogicalResult wave::RegisterOp::verify() {
 //-----------------------------------------------------------------------------
 
 LogicalResult WriteOp::verify() {
-  Attribute bounds = getBoundsAttr(); // Optional
+  DictionaryAttr bounds = getBounds().value_or(DictionaryAttr());
   if (!bounds)
     return success();
 
-  auto dict = dyn_cast<DictionaryAttr>(bounds);
-  if (!dict)
-    return emitOpError("'bounds' must be a dictionary");
-
-  for (NamedAttribute value : dict) {
-    // Value type must be WaveDistributedShapeAttr
-    if (!dyn_cast<wave::DistributedShapeAttr>(value.getValue()))
-      return emitOpError()
-             << "'bounds' values must be WaveDistributedShapeAttr, got "
-             << value.getValue();
-  }
-  return success();
+  return verifyReadWriteBounds(getLoc(), getMemory().getType(), bounds);
 }
 
 //-----------------------------------------------------------------------------

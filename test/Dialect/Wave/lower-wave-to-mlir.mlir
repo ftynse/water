@@ -168,7 +168,6 @@ func.func @lower_alloc() attributes {wave.hyperparameters = #wave.hyperparameter
   %buf = wave.allocate
     { distributed_shape = #wave.distributed_shape<[BLOCK_M, BLOCK_K] -> (BLOCK_M, BLOCK_K + 4)>}
     : !wave.tensor<[@M, @K] of bf16, <shared>>
-  wave.read %buf : (!wave.tensor<[@M, @K] of bf16, <shared>>) -> !wave.tensor<[@M, @K] of bf16, <register>>
   return
   }
 }
