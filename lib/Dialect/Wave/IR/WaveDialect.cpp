@@ -223,6 +223,21 @@ wave::WaveDialect::verifyOperationAttribute(mlir::Operation *op,
     }
     return llvm::success();
   }
+
+  if (attr.getName() == kWaveConstraintsName) {
+    mlir::ArrayAttr attrs = llvm::dyn_cast<mlir::ArrayAttr>(attr.getValue());
+
+    for (auto attr : attrs) {
+      if (!llvm::isa<wave::HardwareConstraintAttr, wave::DeviceConstraintAttr,
+                     wave::WorkgroupConstraintAttr, wave::WaveConstraintAttr,
+                     wave::TilingConstraintAttr, wave::IteratorBindingAttr,
+                     wave::ReorderingConstraintAttr>(attr)) {
+        return op->emitError() << attr << " unexpected attribute";
+      }
+    }
+    return llvm::success();
+  }
+
   return op->emitError() << "unexpected wave dialect attribute "
                          << attr.getName() << " = " << attr.getValue();
 }

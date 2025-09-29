@@ -111,7 +111,7 @@ def WaveNormalFormAttr
 }
 
 //-----------------------------------------------------------------------------
-// Address space enum and attribute
+// Workgroup dim enum and attribute
 //-----------------------------------------------------------------------------
 
 def WaveWorkgroupDimEnum
@@ -166,7 +166,7 @@ def HardwareConstraintAttr : AttrDef<WaveDialect, "HardwareConstraint"> {
 
   let assemblyFormat = [{
     `<` `threads_per_wave` `=` $threads_per_wave
-    (`,` `waves_per_block` `=` `[` $waves_per_block^  `]`)?
+    (`,` `waves_per_block` `=` `[` $waves_per_block^ `]`)?
     (`,` `mma_type` `=` $mma_type^)?
     (`,` `vector_shapes` `=` $vector_shapes^)?
     (`,` `max_bits_per_load` `=` $max_bits_per_load^)? `>`
