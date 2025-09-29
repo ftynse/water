@@ -118,14 +118,12 @@ findDimWithLargestStep(DictionaryAttr indexDict,
 
   for (auto &&[i, entry] : llvm::enumerate(indexDict)) {
     auto mapAttr = cast<wave::WaveIndexMappingAttr>(entry.getValue());
-    std::optional<SmallVector<int64_t>> vals =
-        wave::resolveSymbolNames(mapAttr.getSymbolNames(), hyper);
-    if (!vals)
-      return std::nullopt;
     std::optional<SmallVector<int64_t>> folded =
-        wave::evaluateMapWithSymbols(mapAttr.getStep(), *vals);
+        wave::evaluateMapWithHyperparams(mapAttr.getStep(),
+                                         mapAttr.getSymbolNames(), hyper);
     if (!folded)
       return std::nullopt;
+    assert(folded->size() == 1 && "expected single-result map");
     int64_t size = (*folded)[0];
 
     if (!bestSize || size >= *bestSize) {
