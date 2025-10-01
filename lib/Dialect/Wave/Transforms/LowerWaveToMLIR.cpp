@@ -49,7 +49,9 @@ struct LowerWaveToMLIRPass
 
     // TODO: require index expressions to be present
     if (failed(wave::verifyNormalFormPassPrecondition(
-            wave::WaveNormalForm::AllTypesSpecified, op, getPassName())))
+            wave::WaveNormalForm::AllTypesSpecified |
+                wave::WaveNormalForm::MemoryOnlyTypes,
+            op, getPassName())))
       return signalPassFailure();
 
     ConversionTarget target(*ctx);
@@ -66,8 +68,18 @@ struct LowerWaveToMLIRPass
     ConversionConfig config;
     config.allowPatternRollback = false;
 
+    auto *waveDialect = getContext().getLoadedDialect<wave::WaveDialect>();
     WalkResult walkResult =
         getOperation()->walk<WalkOrder::PreOrder>([&](Operation *op) {
+          // We shouldn't hit standalone Wave dialect operations as we are
+          // walking in preorder.
+          // TODO: consider turning this into a normalform.
+          if (op->getDialect() == waveDialect) {
+            op->emitError() << "wave dialect operation with no hyperparameters "
+                               "provided by any ancestor";
+            return WalkResult::interrupt();
+          }
+
           auto hyperparam = op->getAttrOfType<wave::WaveHyperparameterAttr>(
               wave::WaveDialect::kHyperparameterAttrName);
           if (!hyperparam)
@@ -85,6 +97,8 @@ struct LowerWaveToMLIRPass
             op->emitError() << "failed to convert starting at this operation";
             return WalkResult::interrupt();
           }
+
+          op->removeAttr(wave::WaveDialect::kHyperparameterAttrName);
           return WalkResult::skip();
         });
     if (walkResult.wasInterrupted())

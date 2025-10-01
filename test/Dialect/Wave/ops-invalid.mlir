@@ -43,14 +43,14 @@ func.func @mismatch_dim_rhs_acc(%lhs: !wave.tensor<[@A, @B] of f16>, %rhs: !wave
 // -----
 
 func.func @invalid_register_type(%arg0: f32) {
-  // expected-error @below {{expected wave tensor type, got 'f32'}}
+  // expected-error @below {{expected wave tensor or vector type, got 'f32'}}
   wave.register %arg0 : f32
 }
 
 // -----
 
 func.func @register_type_mismatch(%arg0: f32) {
-  // expected-error @below {{expected the type of the init value to match the elemental type of the tensor}}
+  // expected-error @below {{expected the type of the init value to match the elemental type of the result}}
   "wave.register"(%arg0) : (f32) -> !wave.tensor<[@A, @B] of bf16>
 }
 
@@ -224,6 +224,8 @@ module attributes {wave.normal_form = #wave.normal_form<full_types>} {
   }
 }
 
+// -----
+
 module attributes {wave.normal_form = #wave.normal_form<full_types>} {
   func.func @index_value_unspecified(%mem: !wave.tensor<[@M] of f16, <global>>)
   attributes {wave.hyperparameters = #wave.hyperparameters<{M = 128, N = 256}>}  {
@@ -234,6 +236,17 @@ module attributes {wave.normal_form = #wave.normal_form<full_types>} {
         N : [T1, WG1, BLOCK_N] -> (WG1 * BLOCK_N + (BLOCK_N floordiv 2) * T1, BLOCK_N ceildiv 2, 1)}
       : (!wave.tensor<[@M] of f16, <global>>) -> !wave.tensor<[@M] of f16, <register>>
 
+    return
+  }
+}
+
+// -----
+
+module attributes {wave.normal_form = #wave.normal_form<full_types>} {
+  func.func @elements_per_thread_mismatch(%mem: !wave.tensor<[@M] of f16, <global>>)
+  attributes {wave.hyperparameters = #wave.hyperparameters<{M = 128}>}  {
+    // expected-error @below {{expected result vector type to have the number of elements per thread matching the attribute (4), got 42}}
+    %0 = wave.read %mem {elements_per_thread=4}: (!wave.tensor<[@M] of f16, <global>>) -> vector<42xf16>
     return
   }
 }
