@@ -186,9 +186,9 @@ func.func @lower_alloc() attributes {wave.hyperparameters = #wave.hyperparameter
 
 // -----
 
-module attributes {wave.normal_form = #wave.normal_form<full_types>} {
+module attributes {wave.normal_form = #wave.normal_form<full_types,memory_only_types>} {
 // CHECK-LABEL: @lower_read
-func.func @lower_read(%mem: !wave.tensor<[@X] of f16, <global>>) attributes {wave.hyperparameters = #wave.hyperparameters<{BLOCK_M = 64, BLOCK_N=64}>}  {
+func.func @lower_read(%mem: !wave.tensor<[@M] of f16, <global>>) attributes {wave.hyperparameters = #wave.hyperparameters<{BLOCK_M = 64, BLOCK_N = 64, M = 128, N = 128}>}  {
   // CHECK-DAG: #[[MAP2:.*]] = affine_map<()[s0, s1] -> (s0 + s1 * 64 - (s0 floordiv 64) * 32)>
   // CHECK-DAG: #[[MAPY:.*]] = affine_map<()[s0, s1] -> (s0 * 64 + s1 * 32)>
 
@@ -202,7 +202,10 @@ func.func @lower_read(%mem: !wave.tensor<[@X] of f16, <global>>) attributes {wav
 
   // CHECK: %[[VEC:.+]] = vector.load {{.*}}[%[[ROW]], %[[COL]]] : memref<{{.*}}xf16{{.*}}>, vector<32xf16>
 
-  %0 = wave.read %mem index {M : [BLOCK_M, WG0, T0] -> (BLOCK_M * WG0 + (BLOCK_M floordiv 2) * (T0 floordiv 64) + T0 mod 64, 1, 64), N : [T1, WG1, BLOCK_N] -> (WG1 * BLOCK_N + (BLOCK_N floordiv 2) * T1, BLOCK_N ceildiv 2, 1)} : (!wave.tensor<[@X] of f16, <global>>) -> !wave.tensor<any of f16, <register>>
+  %0 = wave.read %mem index {
+      M : [BLOCK_M, WG0, T0] -> (BLOCK_M * WG0 + (BLOCK_M floordiv 2) * (T0 floordiv 64) + T0 mod 64, 1, 64),
+      N : [T1, WG1, BLOCK_N] -> (WG1 * BLOCK_N + (BLOCK_N floordiv 2) * T1, BLOCK_N ceildiv 2, 1)}
+     : (!wave.tensor<[@M] of f16, <global>>) -> vector<8xf16>
 
   return
   }
@@ -210,15 +213,18 @@ func.func @lower_read(%mem: !wave.tensor<[@X] of f16, <global>>) attributes {wav
 
 // -----
 
-module attributes {wave.normal_form = #wave.normal_form<full_types>} {
+module attributes {wave.normal_form = #wave.normal_form<full_types,memory_only_types>} {
   // CHECK-LABEL: @lower_read_masked
   func.func @lower_read_masked(%mem: !wave.tensor<[@M, @N] of f16, <global>>)
-      attributes {wave.hyperparameters = #wave.hyperparameters<{BLOCK_M = 64, BLOCK_N = 64, M = 100, N = 50}, L=4>} {
+      attributes {wave.hyperparameters = #wave.hyperparameters<{BLOCK_M = 64, BLOCK_N = 64, M = 100, N = 50}>} {
 
-    %v = wave.read %mem
-      index { M : [WG0, T0] -> (WG0 * BLOCK_M + T0, 1, 64), N : [WG1, T1] -> (WG1 * BLOCK_N + T1 * 32, 64, 1)
-      } { bounds = { M = #wave.distributed_shape<[M] -> (M)>,N = #wave.distributed_shape<[N] -> (N)>} }
-      : (!wave.tensor<[@M, @N] of f16, <global>>) -> !wave.tensor<[@L] of f16, <register>>
+    %v = wave.read %mem index {
+        M : [BLOCK_M, WG0, T0] -> (WG0 * BLOCK_M + T0, 1, 64),
+        N : [WG1, T1, BLOCK_N] -> (WG1 * BLOCK_N + T1 * 32, 64, 1)
+      } { bounds = {
+        M = #wave.distributed_shape<[M] -> (M)>,
+        N = #wave.distributed_shape<[N] -> (N)>}}
+      : (!wave.tensor<[@M, @N] of f16, <global>>) -> vector<4xf16>
 
     return
   }

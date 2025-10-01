@@ -262,16 +262,12 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
 
-    Type convertedType = getTypeConverter()->convertType(op.getType());
+    Type convertedType = getTypeConverter()->convertType(op);
     if (!convertedType)
       return rewriter.notifyMatchFailure(op,
                                          "WaveTensorType conversion failed");
 
     auto vectorType = cast<VectorType>(convertedType);
-    if (!vectorType)
-      return rewriter.notifyMatchFailure(
-          op, "expected vector type after conversion");
-
     int64_t elementsPerThread = vectorType.getNumElements();
 
     Value base = adaptor.getMemory();
@@ -323,7 +319,6 @@ public:
     auto vecType = cast<VectorType>(vec.getType());
     auto memoryType = cast<wave::WaveTensorType>(op.getMemory().getType());
     ArrayRef<wave::WaveSymbolAttr> orderedSyms = memoryType.getShape();
-
     int64_t elementsPerThread = vecType.getNumElements();
     DictionaryAttr boundsDict = op.getBoundsAttr();
     DictionaryAttr indexDict = op.getIndexAttr();
