@@ -31,7 +31,8 @@ public:
   // null, an identity shape from symbols is assumed.
   mlir::Type
   convertTensorFromComponents(llvm::ArrayRef<wave::WaveSymbolAttr> symbols,
-                              mlir::AffineMap shape, mlir::Type elementType,
+                              std::optional<wave::DistributedShapeAttr> shape,
+                              mlir::Type elementType,
                               wave::WaveAddressSpace addressSpace) const;
 
 private:

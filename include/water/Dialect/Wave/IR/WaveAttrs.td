@@ -366,7 +366,7 @@ def WaveExpressionAttr : AttrDef<WaveDialect, "WaveExpression"> {
     Base symbolic expression used in the Wave dialect.
   }];
 
-  let parameters = (ins ArrayRefParameter<"WaveSymbolAttr">:$symbol_names,
+  let parameters = (ins ArrayRefParameter<"WaveSymbolAttr">:$symbols,
                     "::mlir::AffineMap":$map);
 
   let hasCustomAssemblyFormat = 1;
@@ -374,17 +374,17 @@ def WaveExpressionAttr : AttrDef<WaveDialect, "WaveExpression"> {
   let extraClassDeclaration = [{
     /// Get the symbol name at the given index.
     ::llvm::StringRef getSymbolName(unsigned index) const {
-      auto names = getSymbolNames();
-      if (index >= names.size()) return ::llvm::StringRef();
-        return names[index].getName();
+      auto symbols = getSymbols();
+      if (index >= symbols.size()) return ::llvm::StringRef();
+        return symbols[index].getName();
     }
 
     /// Get all symbol names as a vector of string references.
-    ::llvm::SmallVector<::llvm::StringRef> getAllSymbolNames() const {
+    ::llvm::SmallVector<::llvm::StringRef> getSymbolNames() const {
       ::llvm::SmallVector<::llvm::StringRef> result;
-      auto names = getSymbolNames();
-      result.reserve(names.size());
-      for (auto symbolAttr : names) {
+      auto symbols = getSymbols();
+      result.reserve(symbols.size());
+      for (auto symbolAttr : symbols) {
         result.push_back(symbolAttr.getName());
       }
       return result;
@@ -483,18 +483,21 @@ def WaveDistributedShapeAttr : AttrDef<WaveDialect, "DistributedShape"> {
   }];
 
   let parameters = (ins
-    ArrayRefParameter<"WaveSymbolAttr">:$symbol_names,
-    "::mlir::AffineMap":$shape
+    "::mlir::DictionaryAttr":$shape_map
   );
-  let hasCustomAssemblyFormat = 1;
+
+  let assemblyFormat = "`<` $shape_map `>`";
+
+  let genVerifyDecl = 1;
 
   let extraClassDeclaration = [{
-    unsigned getRank() const { return getShape().getNumResults(); }
-    unsigned getNumSymbols() const { return getShape().getNumSymbols(); }
+    unsigned getRank() const { return getShapeMap().size(); }
+
+    std::optional<wave::WaveExpressionAttr> getSymbolExpr(wave::WaveSymbolAttr symbol) const;
 
     std::optional<llvm::SmallVector<int64_t>>
     getResolvedShape(::wave::WaveHyperparameterAttr hyper) const;
   }];
 }
 
-#endif // WATER_DIALECT_WAVE_WAVEATTRS
+#endif // WATER_DIALECT_W[AVE_WAVEATTRS
