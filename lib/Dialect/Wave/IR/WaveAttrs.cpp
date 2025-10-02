@@ -176,70 +176,85 @@ bool WaveHyperparameterAttr::hasSymbol(StringRef symbolName) const {
 // DistributedShapeAttr
 //===----------------------------------------------------------------------===//
 
-LogicalResult
-DistributedShapeAttr::verify(function_ref<InFlightDiagnostic()> emitError,
-                             DictionaryAttr shapeMap) {
-  for (NamedAttribute attr : shapeMap) {
-    Attribute value = attr.getValue();
-
-    if (!isa<WaveExpressionAttr>(value))
-      return emitError() << attr.getName()
-                         << " is not an IntegerAttr: " << attr.getValue();
-  }
-
-  return success();
-}
-
-// llvm::DenseMap<llvm::StringRef, std::pair<llvm::ArrayRef<llvm::StringRef>,
-// mlir::AffineMap>> wave::DistributedShapeAttr::getMap() const {
-// llvm::DenseMap<llvm::StringRef, std::pair<llvm::ArrayRef<llvm::StringRef>,
-// mlir::AffineMap>> map;
-
-//   for (NamedAttribute attr : getShapeMap()) {
-//     auto sym = WaveSymbolAttr::get(getContext(), attr.getName());
-//     auto expr = cast<WaveExpressionAttr>(attr.getValue());
-//     map.try_emplace(sym.getName(), std::make_pair(expr.getSymbolNames(),
-//     expr.getMap()));
-//   }
-//   return map;
-// }
-
 std::optional<llvm::SmallVector<int64_t>>
 wave::DistributedShapeAttr::getResolvedShape(
     wave::WaveHyperparameterAttr hyper) const {
-  DictionaryAttr map = getShapeMap();
-  llvm::SmallVector<int64_t> res;
-  res.reserve(map.size());
-
-  for (NamedAttribute attr : map) {
-    auto expr = cast<WaveExpressionAttr>(attr.getValue());
-
-    std::optional<SmallVector<int64_t>> values =
-        wave::resolveSymbolNames(expr.getSymbols(), hyper);
-    if (!values)
-      return std::nullopt;
-
-    std::optional<llvm::SmallVector<int64_t>> eval =
-        wave::evaluateMapWithSymbols(expr.getMap(), *values);
-    if (!eval)
-      return std::nullopt;
-
-    res.push_back(eval.value()[0]);
-  }
-  return res;
+  std::optional<SmallVector<int64_t>> values =
+      wave::resolveSymbolNames(getSymbolNames(), hyper);
+  if (!values)
+    return std::nullopt;
+  return wave::evaluateMapWithSymbols(getShape(), *values);
 }
 
-std::optional<wave::WaveExpressionAttr>
-wave::DistributedShapeAttr::getSymbolExpr(wave::WaveSymbolAttr symbol) const {
-  DictionaryAttr mapping = getShapeMap();
-  StringRef symbolName = symbol.getName();
-  Attribute attr = mapping.get(symbolName);
-  if (!attr)
-    return std::nullopt;
+Attribute DistributedShapeAttr::parse(AsmParser &parser, Type) {
+  if (parser.parseLess())
+    return {};
 
-  auto expr = cast<wave::WaveExpressionAttr>(attr);
+  SmallVector<WaveSymbolAttr> symbolNameAttrs;
+  SmallVector<StringRef> symbolNames;
 
-  return expr;
+  // Parse '[' symbol-names ']' allowing empty or non-empty lists.
+  if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, [&]() {
+        return parseSymbol(symbolNameAttrs, symbolNames, parser);
+      }))
+    return {};
+
+  // Parse: '->' '(' expr (',' expr)* ')'
+  if (parser.parseArrow())
+    return {};
+  MLIRContext *context = parser.getContext();
+
+  SmallVector<AffineExpr> results;
+  auto parseOneExpr = [&]() -> ParseResult {
+    AffineExpr e;
+    if (failed(parseExprWithNames(symbolNames, e, parser)))
+      return failure();
+    results.push_back(e);
+    return success();
+  };
+  if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parseOneExpr))
+    return {};
+
+  if (results.empty()) {
+    parser.emitError(parser.getCurrentLocation(),
+                     "distributed shape must have at least one dimension");
+    return {};
+  }
+  if (parser.parseGreater())
+    return {};
+
+  // Build a single map with all result expressions.
+  auto shape = AffineMap::get(/*numDims=*/0, /*numSymbols=*/symbolNames.size(),
+                              results, context);
+
+  return get(parser.getContext(), symbolNameAttrs, shape);
+}
+
+void DistributedShapeAttr::print(mlir::AsmPrinter &printer) const {
+  // Print symbol names like: [M, K] -> ( ... )
+  printer << "<[";
+  llvm::SmallVector<llvm::StringRef> names;
+  names.reserve(getSymbolNames().size());
+  llvm::interleaveComma(getSymbolNames(), printer.getStream(),
+                        [&](wave::WaveSymbolAttr s) {
+                          names.push_back(s.getName());
+                          printer << s.getName();
+                        });
+  printer << "] -> (";
+
+  // We have one map with N results. For each result expr, make a 1-result map
+  // so we can reuse the identical stringifyWithNames(map,names) helper.
+  mlir::AffineMap full = getShape(); // your stored map
+  for (unsigned i = 0, e = full.getNumResults(); i < e; ++i) {
+    if (i)
+      printer << ", ";
+    mlir::AffineMap one =
+        mlir::AffineMap::get(/*numDims=*/0,
+                             /*numSymbols=*/full.getNumSymbols(),
+                             /*results=*/full.getResult(i), full.getContext());
+    printer << stringifyWithNames(one, names);
+  }
+  printer << ")>";
 }
 
 //===----------------------------------------------------------------------===//
@@ -285,11 +300,11 @@ void WaveExpressionAttr::print(AsmPrinter &printer) const {
   // Each expression is an affine map with the same numSymbols; we substitute
   // s0, s1, ... using the shared names when rendering each expression.
   printer << "[";
-  llvm::interleaveComma(getSymbols(), printer,
+  llvm::interleaveComma(getSymbolNames(), printer,
                         [&](WaveSymbolAttr s) { printer << s.getName(); });
   printer << "] -> ";
 
-  SmallVector<StringRef> allNames = getSymbolNames();
+  SmallVector<StringRef> allNames = getAllSymbolNames();
   // All three maps share the same symbol set and order.
   std::string str = stringifyWithNames(getMap(), allNames);
 

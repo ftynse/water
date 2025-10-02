@@ -28,13 +28,12 @@ public:
   matchAndRewrite(wave::AllocateOp op, wave::AllocateOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     wave::WaveTensorType resultType = op.getResult().getType();
-    ArrayRef<wave::WaveSymbolAttr> symbolicShape = resultType.getShape();
-    wave::DistributedShapeAttr distShape = op.getDistributedShape();
+    wave::DistributedShapeAttr distributedShape = op.getDistributedShape();
     auto *typeConverter =
         static_cast<const wave::WaveTypeConverter *>(getTypeConverter());
     Type convertedResultType = typeConverter->convertTensorFromComponents(
-        symbolicShape, distShape, resultType.getElementType(),
-        resultType.getAddressSpaceValue());
+        distributedShape.getSymbolNames(), distributedShape.getShape(),
+        resultType.getElementType(), resultType.getAddressSpaceValue());
     if (!convertedResultType) {
       return rewriter.notifyMatchFailure(op,
                                          "failed to construct resulting type");

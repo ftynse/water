@@ -53,37 +53,17 @@ wave::WaveTypeConverter::WaveTypeConverter(
 }
 
 mlir::Type wave::WaveTypeConverter::convertTensorFromComponents(
-    llvm::ArrayRef<wave::WaveSymbolAttr> symbols,
-    std::optional<wave::DistributedShapeAttr> maybeShape,
+    llvm::ArrayRef<wave::WaveSymbolAttr> symbols, mlir::AffineMap shape,
     mlir::Type elementType, wave::WaveAddressSpace addressSpace) const {
-  SmallVector<int64_t> finalShape;
-  finalShape.reserve(symbols.size());
+  std::optional<SmallVector<int64_t>> symbolValues =
+      wave::resolveSymbolNames(symbols, hyperParameters);
+  if (!symbolValues)
+    return nullptr;
 
-  for (wave::WaveSymbolAttr symbol : symbols) {
-    if (!maybeShape)
-      continue;
-
-    wave::DistributedShapeAttr shape = *maybeShape;
-
-    std::optional<WaveExpressionAttr> maybeExpr = shape.getSymbolExpr(symbol);
-    if (!maybeExpr)
-      return nullptr;
-
-    WaveExpressionAttr expr = *maybeExpr;
-
-    std::optional<SmallVector<int64_t>> symbolValues =
-        wave::resolveSymbolNames(expr.getSymbols(), hyperParameters);
-    if (!symbolValues)
-      return nullptr;
-
-    std::optional<SmallVector<int64_t>> staticShape =
-        expr ? wave::evaluateMapWithSymbols(expr.getMap(), *symbolValues)
-             : symbolValues;
-    if (!staticShape)
-      return nullptr;
-
-    finalShape.push_back(staticShape.value()[0]);
-  }
+  std::optional<SmallVector<int64_t>> staticShape =
+      shape ? wave::evaluateMapWithSymbols(shape, *symbolValues) : symbolValues;
+  if (!staticShape)
+    return nullptr;
 
   elementType = convertType(elementType);
   if (!elementType)
@@ -98,7 +78,7 @@ mlir::Type wave::WaveTypeConverter::convertTensorFromComponents(
     // GPU global memory (device memory)
     auto globalMemoryAddressSpace = gpu::AddressSpaceAttr::get(
         elementType.getContext(), gpu::AddressSpace::Global);
-    return MemRefType::get(finalShape, elementType,
+    return MemRefType::get(*staticShape, elementType,
                            /*layout=*/MemRefLayoutAttrInterface{},
                            globalMemoryAddressSpace);
   }
@@ -107,14 +87,14 @@ mlir::Type wave::WaveTypeConverter::convertTensorFromComponents(
     // GPU shared memory
     auto workgroupMemoryAddressSpace = gpu::AddressSpaceAttr::get(
         elementType.getContext(), gpu::AddressSpace::Workgroup);
-    return MemRefType::get(finalShape, elementType,
+    return MemRefType::get(*staticShape, elementType,
                            /*layout=*/MemRefLayoutAttrInterface{},
                            workgroupMemoryAddressSpace);
   }
 
   case wave::WaveAddressSpace::Register:
     // For register space, use vector type (registers are handled by LLVM)
-    return VectorType::get(finalShape, elementType);
+    return VectorType::get(*staticShape, elementType);
   }
 
   llvm_unreachable("unsupported address space");

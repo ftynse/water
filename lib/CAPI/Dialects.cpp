@@ -126,17 +126,18 @@ bool mlirAttributeIsAWaveDistributedShapeAttr(MlirAttribute attr) {
   return llvm::isa<wave::DistributedShapeAttr>(unwrap(attr));
 }
 
-MlirAttribute mlirWaveDistributedShapeAttrGet(MlirAttribute map) {
-  auto dictAttr = llvm::cast<mlir::DictionaryAttr>(unwrap(map));
-  mlir::MLIRContext *ctx = dictAttr.getContext();
+MlirAttribute mlirWaveDistributedShapeAttrGet(MlirAttribute *symbolNames,
+                                              MlirAffineMap map) {
+  mlir::MLIRContext *ctx = unwrap(map).getContext();
 
-  assert(llvm::all_of(dictAttr,
-                      [](const mlir::NamedAttribute &namedAttr) {
-                        return llvm::isa<wave::WaveExpressionAttr>(
-                            namedAttr.getValue());
-                      }) &&
-         "expected mapping to contain only wave expressions");
-  return wrap(wave::DistributedShapeAttr::get(ctx, dictAttr));
+  unsigned numSymbols = mlirAffineMapGetNumSymbols(map);
+  llvm::SmallVector<wave::WaveSymbolAttr> symbolAttrs = llvm::map_to_vector(
+      llvm::make_range(symbolNames, symbolNames + numSymbols),
+      [](MlirAttribute attr) {
+        return llvm::cast<wave::WaveSymbolAttr>(unwrap(attr));
+      });
+
+  return wrap(wave::DistributedShapeAttr::get(ctx, symbolAttrs, unwrap(map)));
 }
 
 MlirTypeID mlirWaveDistributedShapeAttrGetTypeID() {
