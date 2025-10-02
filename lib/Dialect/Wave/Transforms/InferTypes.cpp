@@ -24,7 +24,7 @@ using wave::ElementsPerThreadLatticeValue;
 
 namespace wave {
 #define GEN_PASS_DEF_WATERWAVEINFERTYPESPASS
-#define GEN_PASS_DEF_WAVERWAVEPROPAGATEELEMENTSPERTHREADPASS
+#define GEN_PASS_DEF_WATERWAVEPROPAGATEELEMENTSPERTHREADPASS
 #include "water/Dialect/Wave/Transforms/Passes.h.inc"
 } // namespace wave
 
@@ -771,11 +771,11 @@ public:
 
 // Elements-per-thread propagation pass implementation.
 class PropagateElementsPerThread
-    : public wave::impl::WaverWavePropagateElementsPerThreadPassBase<
+    : public wave::impl::WaterWavePropagateElementsPerThreadPassBase<
           PropagateElementsPerThread> {
 public:
-  using WaverWavePropagateElementsPerThreadPassBase::
-      WaverWavePropagateElementsPerThreadPassBase;
+  using WaterWavePropagateElementsPerThreadPassBase::
+      WaterWavePropagateElementsPerThreadPassBase;
 
   void runOnOperation() override {
     // Configure the analyses. The dead code and SCP analyses are required by
