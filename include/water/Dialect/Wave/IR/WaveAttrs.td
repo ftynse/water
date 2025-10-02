@@ -145,18 +145,23 @@ def HardwareConstraintAttr : AttrDef<WaveDialect, "HardwareConstraint"> {
                               max_bits_per_load = 128>
     ```
 
-    specifies that the hardware supports N threads per wave and that
-    we want all mma operations in the microkernel to be
+    specifies that the hardware supports N `threads_per_wave`
+    and that we want all mma operations in the microkernel to be
     mapped to a hardware mma instruction of shape (16x16x16).
     This translates to a hardware specific index constraint.
+    `waves_per_block` is used to determine how many waves should make up
+    one workgroup.
 
     Not all computation graphs have mma operators in them. In
     these situations, the user can specify the vector shape they
-    want to tile to by specifying the vector shapes dictionary
+    want to tile to by specifying the `vector_shapes` dictionary
     which maps a tensor dimension to its corresponding tile size.
 
     Both mma constraints and vector shapes can be specified, but
     the mapping from symbols to shapes should be injective.
+
+    `max_bits_per_load` specifies the maximum number of bits that can
+    be loaded with a single load instruction.
   }];
   let parameters = (ins "unsigned":$threads_per_wave,
                         OptionalArrayRefParameter<"unsigned">:$waves_per_block,
@@ -181,46 +186,19 @@ def WorkgroupConstraintAttr : AttrDef<WaveDialect, "WorkgroupConstraint"> {
     A constraint of the form:
     ```mlir
     #wave.workgroup_constraint<dim = <"M">,
-                               tile_size = [BLOCK_M] -> (BLOCK_M floordiv 4),
+                               tile_size = [BLOCK_M] -> (BLOCK_M),
                                workgroup_dim = <x>,
                                primary = true>
     ```
 
-    specifies that we want to distribute dimension M along workgroup dim 0
+    specifies that we want to distribute dimension M along workgroup dim `x`
     with a tile size of BLOCK_M resulting in M // BLOCK_M workgroups along that
-    dimension. This translates to an index constraint for all tensors of the
-    shape [M, ?] -> index += (workgroup_id_0 * BLOCK_M, 0)
+    dimension.
   }];
   let parameters = (ins "::wave::WaveSymbolAttr":$dim,
                         "::wave::WaveExpressionAttr":$tile_size,
                         "::wave::WaveWorkgroupDimAttr":$workgroup_dim,
                         DefaultValuedParameter<"bool", "true">:$primary);
-
-  let assemblyFormat = "`<` struct(params) `>`";
-}
-
-def TilingConstraintAttr : AttrDef<WaveDialect, "TilingConstraint"> {
-  let mnemonic = "tiling_constraint";
-  let description = [{
-    A constraint of the form:
-    ```mlir
-    #wave.tiling_constraint<dim = <"K">,
-                            tile_size = [BLOCK_K] -> (BLOCK_K),
-                            induction_var = [ARGK] -> (ARGK),
-                            iters = [SPLIT_LEN, BLOCK_K] -> (SPLIT_LEN floordiv BLOCK_K),
-                            start = [SPLIT_OFF] -> (SPLIT_OFF)>
-    ```
-
-    specifies that we want to tile the K dimension with a tile size of BLOCK_K. This
-    adds an index constraint to the K-th dimension of a tensor of the form
-    BLOCK_K * i, where i is the induction variable associated with the
-    loop around dimension K.
-  }];
-  let parameters = (ins "::wave::WaveSymbolAttr":$dim,
-                        OptionalParameter<"::wave::WaveExpressionAttr">:$tile_size,
-                        OptionalParameter<"::wave::WaveExpressionAttr">:$induction_var,
-                        OptionalParameter<"::wave::WaveExpressionAttr">:$iters,
-                        OptionalParameter<"::wave::WaveExpressionAttr">:$start);
 
   let assemblyFormat = "`<` struct(params) `>`";
 }
@@ -242,27 +220,35 @@ def WaveConstraintAttr : AttrDef<WaveDialect, "WaveConstraint"> {
     If the K dimension has been distributed among workgroups with a
     tile size of BLOCK_K, then the number of waves along the K dimension
     is given by BLOCK_K // WAVE_K.
-
-    This constraint adds an index constraint to the K-th dimension of a
-    a tensor of the form WAVE_K * wave_id. The index of the wave
-    is determined by the following mapping:
-    workgroup id 0 -> wave/thread id x
-    workgroup id 1 -> wave/thread id y
-    workgroup id 2 -> wave/thread id z
-    (If the tensor dimension has been distributed along workgroup dimension
-    {0, 1, 2}, then the corresponding thread id is {x, y, z}).
-
-    Because we represent the number of threads per block as
-    [wave_id_0 * threads_per_wave, wave_id_1, wave_id_2], special care is
-    required when computing wave_id_0. Specifically,
-    wave_id_0 = floor(thread_id_0 / threads_per_wave)
-    wave_id_1 = thread_id_1
-    wave_id_2 = thread_id_2
   }];
   let parameters = (ins "::wave::WaveSymbolAttr":$dim,
                         "::wave::WaveExpressionAttr":$tile_size,
                         OptionalParameter<"::wave::WaveExpressionAttr">:$wave_id,
                         OptionalParameter<"::wave::WorkgroupConstraintAttr">:$wg_constraint);
+
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+def TilingConstraintAttr : AttrDef<WaveDialect, "TilingConstraint"> {
+  let mnemonic = "tiling_constraint";
+  let description = [{
+    A constraint of the form:
+    ```mlir
+    #wave.tiling_constraint<dim = <"K">,
+                            tile_size = [TILE_K] -> (TILE_K),
+                            induction_var = [ARGK] -> (ARGK),
+                            iters = [SPLIT_LEN, TILE_K] -> (SPLIT_LEN floordiv TILE_K),
+                            start = [SPLIT_OFF] -> (SPLIT_OFF)>
+    ```
+
+    specifies that we want to distribute the K dimension among multiple threads. With
+    each thread operating on a tile size of TILE_K.
+  }];
+  let parameters = (ins "::wave::WaveSymbolAttr":$dim,
+                        OptionalParameter<"::wave::WaveExpressionAttr">:$tile_size,
+                        OptionalParameter<"::wave::WaveExpressionAttr">:$induction_var,
+                        OptionalParameter<"::wave::WaveExpressionAttr">:$iters,
+                        OptionalParameter<"::wave::WaveExpressionAttr">:$start);
 
   let assemblyFormat = "`<` struct(params) `>`";
 }
