@@ -431,7 +431,7 @@ public:
 };
 
 // Run the dataflow analyses and capture whether some diagnostics were emitted.
-// Only emitted a generic diagnostic if no more specific diagnostic was emitted.
+// Only emit a generic diagnostic if no more specific diagnostic was emitted.
 // This is usually indicative of some deep internal problem in the dataflow
 // solver.
 static llvm::LogicalResult
@@ -459,7 +459,7 @@ runSolverAndCaptureErrors(mlir::DataFlowSolver &solver, mlir::Operation *root,
 }
 
 // Walk over all value definitions (op results and block arguments) and directly
-// set their types to ones using the inferred shape. Report error and stop if
+// set their types using the provided callback. Report error and stop if
 // any type failed to infer. Inferred types are supposed to still be accepted by
 // the op verifiers that will normally run after the pass.
 static llvm::LogicalResult updateValueTypes(
@@ -706,7 +706,8 @@ public:
   // Specialization of the dataflow transfer function for control flow branch
   // operation that are not forwarded to the branching target, so they cannot be
   // backpropagated from there. We do not expect this to happen so move the
-  // lattice instance to the top state, indicating a if this ever happens.
+  // lattice instance to the top state, indicating a conflict if this ever
+  // happens.
   void visitBranchOperand(mlir::OpOperand &opOperand) override {
     if (!wave::isaTensorInRegister(opOperand.get().getType()))
       return;
@@ -717,7 +718,8 @@ public:
   // Specialization of the dataflow transfer function for call operands that are
   // not forwarded to the callee. We do not expect register-resident types
   // handled by this analysis to be present at the function boundary so we move
-  // the lattice instance to the top state, indicating a if this ever happens.
+  // the lattice instance to the top state, indicating a conflict if this ever
+  // happens.
   void visitCallOperand(mlir::OpOperand &opOperand) override {
     if (!wave::isaTensorInRegister(opOperand.get().getType()))
       return;
