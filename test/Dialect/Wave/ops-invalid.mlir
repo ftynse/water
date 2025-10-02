@@ -251,9 +251,10 @@ module attributes {wave.normal_form = #wave.normal_form<full_types>} {
 
 // -----
 
-// expected-error @below {{expects an IntegerAttr}}
-module attributes { wave.elements_per_thread = "abc" } {
-  func.func @elements_per_thread_not_int() {
+module {
+  func.func @read_write_bounds_number_of_sym_mismatch(%mem: !wave.tensor<[@M, @N] of f32>, %val: !wave.tensor<[@M, @N] of f32, <register>>) {
+    // expected-error @below {{expected as many bound expressions (1) as op tensor type has symbolic dimensions (2)}}
+    wave.write %val, %mem { bounds = #wave.read_write_bounds<{ M = #wave.distributed_shape<[BLOCK_M] -> (BLOCK_M * 64)>}> } : !wave.tensor<[@M, @N] of f32, <register>>, !wave.tensor<[@M, @N] of f32>
     return
   }
 }
@@ -261,29 +262,9 @@ module attributes { wave.elements_per_thread = "abc" } {
 // -----
 
 module {
-  func.func @read_write_bounds_not_dict(%mem: !wave.tensor<any of f32>, %val: !wave.tensor<any of f32, <register>>) {
-    // expected-error @below {{'read_write_bounds' attribute must be a dictionary}}
-    wave.write %val, %mem { wave.read_write_bounds = #wave.distributed_shape<[BLOCK_M, WG0, T0] -> (BLOCK_M * WG0 + (BLOCK_M * (T0 floordiv 64)) floordiv 2 + T0 mod 64)> } : !wave.tensor<any of f32, <register>>, !wave.tensor<any of f32>
-    return
-  }
-}
-
-// -----
-
-module {
-  func.func @read_write_bounds_val_not_distributed_shape_attr(%mem: !wave.tensor<any of f32>, %val: !wave.tensor<any of f32, <register>>) {
-    // expected-error @below {{'read_write_bounds' attribute values must be DistributedShapeAttr, got "abc"}}
-    wave.write %val, %mem { wave.read_write_bounds = {M = "abc"} } : !wave.tensor<any of f32, <register>>, !wave.tensor<any of f32>
-    return
-  }
-}
-
-// -----
-
-// expected-error @below {{'read_write_bounds' attribute can only be attached to 'wave.read' or 'wave.write'}}
-module attributes { wave.read_write_bounds = #wave.distributed_shape<[BLOCK_M, WG0, T0] -> (BLOCK_M * WG0 + (BLOCK_M * (T0 floordiv 64)) floordiv 2 + T0 mod 64)> } {
-  func.func @read_write_bounds_on_module(%mem: !wave.tensor<any of f32>, %val: !wave.tensor<any of f32, <register>>) {
-    wave.write %val, %mem : !wave.tensor<any of f32, <register>>, !wave.tensor<any of f32>
+  func.func @read_write_bounds_sym_dim_not_found(%mem: !wave.tensor<[@N] of f32>, %val: !wave.tensor<[@N] of f32, <register>>) {
+    // expected-error @below {{expected symbolic dimension N to have a bound expression}}
+    wave.write %val, %mem { bounds = #wave.read_write_bounds<{ M = #wave.distributed_shape<[BLOCK_M] -> (BLOCK_M * 64)>}> } : !wave.tensor<[@N] of f32, <register>>, !wave.tensor<[@N] of f32>
     return
   }
 }

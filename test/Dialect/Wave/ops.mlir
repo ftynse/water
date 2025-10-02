@@ -146,8 +146,8 @@ attributes {wave.hyperparameters = #wave.hyperparameters<{BLOCK_M = 32, BLOCK_N 
 }
 
 // CHECK-LABEL: @write_with_bounds
-func.func @write_with_bounds(%memo: !wave.tensor<any of f32>, %val: !wave.tensor<any of f32, <register>>) {
+func.func @write_with_bounds(%memo: !wave.tensor<[@M] of f32>, %val: !wave.tensor<[@M] of f32, <register>>) {
   // CHECK:       wave.read_write_bounds
-  wave.write %val, %memo { wave.read_write_bounds = { M = #wave.distributed_shape<[BLOCK_M, WG0, T0] -> (BLOCK_M * WG0 + (BLOCK_M * (T0 floordiv 64)) floordiv 2 + T0 mod 64)>} } : !wave.tensor<any of f32, <register>>, !wave.tensor<any of f32>
+  wave.write %val, %memo { bounds = #wave.read_write_bounds<{ M = #wave.distributed_shape<[BLOCK_M] -> (BLOCK_M * 64)>}> } : !wave.tensor<[@M] of f32, <register>>, !wave.tensor<[@M] of f32>
   return
 }
