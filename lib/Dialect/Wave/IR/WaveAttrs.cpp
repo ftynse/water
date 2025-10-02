@@ -30,6 +30,12 @@
 using namespace mlir;
 using namespace wave;
 
+//===----------------------------------------------------------------------===//
+// Helpers
+//===----------------------------------------------------------------------===//
+
+/// Helper function to parse a `WaveSymbolAttr`, keeping track of both the
+/// parse WaveSymbolAttr and the symbol name string.
 static ParseResult parseSymbol(SmallVectorImpl<WaveSymbolAttr> &symbolNameAttrs,
                                SmallVectorImpl<StringRef> &symbolNames,
                                AsmParser &parser) {
@@ -42,6 +48,8 @@ static ParseResult parseSymbol(SmallVectorImpl<WaveSymbolAttr> &symbolNameAttrs,
   return success();
 };
 
+/// Helper function to parse an affine wave expression with the wave
+/// symbol names passed in `names`.
 static ParseResult parseExprWithNames(ArrayRef<StringRef> names,
                                       AffineExpr &outExpr, AsmParser &parser) {
   MLIRContext *context = parser.getContext();
@@ -334,22 +342,6 @@ LogicalResult HardwareConstraintAttr::verify(
         return emitError() << attr.getName()
                            << " is not an IntegerAttr: " << attr.getValue();
     }
-  }
-
-  return success();
-}
-
-LogicalResult
-IteratorBindingAttr::verify(function_ref<InFlightDiagnostic()> emitError,
-                            DictionaryAttr binding) {
-
-  for (NamedAttribute attr : binding) {
-    // TODO: verify that attr.getName() is a valid WaveSymbol
-
-    auto value = attr.getValue();
-    if (!isa<WaveSymbolAttr>(value))
-      return emitError() << attr.getName()
-                         << " is not a WaveSymbolAttr: " << attr.getValue();
   }
 
   return success();

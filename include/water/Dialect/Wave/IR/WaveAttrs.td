@@ -183,9 +183,7 @@ def WorkgroupConstraintAttr : AttrDef<WaveDialect, "WorkgroupConstraint"> {
     #wave.workgroup_constraint<dim = <"M">,
                                tile_size = [BLOCK_M] -> (BLOCK_M floordiv 4),
                                workgroup_dim = <x>,
-                               primary = true,
-                               iters = [M] -> (M),
-                               per_device_dim = <"DEVICE_M">>
+                               primary = true>
     ```
 
     specifies that we want to distribute dimension M along workgroup dim 0
@@ -196,9 +194,7 @@ def WorkgroupConstraintAttr : AttrDef<WaveDialect, "WorkgroupConstraint"> {
   let parameters = (ins "::wave::WaveSymbolAttr":$dim,
                         "::wave::WaveExpressionAttr":$tile_size,
                         "::wave::WaveWorkgroupDimAttr":$workgroup_dim,
-                        DefaultValuedParameter<"bool", "true">:$primary,
-                        OptionalParameter<"::wave::WaveExpressionAttr">:$iters,
-                        OptionalParameter<"::wave::WaveSymbolAttr">:$per_device_dim);
+                        DefaultValuedParameter<"bool", "true">:$primary);
 
   let assemblyFormat = "`<` struct(params) `>`";
 }
@@ -235,7 +231,7 @@ def WaveConstraintAttr : AttrDef<WaveDialect, "WaveConstraint"> {
     A constraint of the form:
     ```mlir
     #wave.wave_constraint<dim = <"K">,
-                          tile_size = [BLOCK_K] -> (BLOCK_K floordiv 4),
+                          tile_size = [WAVE_K] -> (WAVE_K),
                           wave_id = [THREAD_0] -> (THREAD_0 floordiv 64),
                           wg_constraint = #wg_constraint>
     ```
@@ -292,15 +288,6 @@ def ReorderingConstraintAttr : AttrDef<WaveDialect, "ReorderingConstraint"> {
   let assemblyFormat = "`<` struct(params) `>`";
 }
 
-def IteratorBindingAttr : AttrDef<WaveDialect, "IteratorBinding"> {
-  let mnemonic = "iterator_binding";
-  let summary = [{TODO}];
-  let description = [{TODO}];
-  let parameters = (ins OptionalParameter<"::mlir::DictionaryAttr">:$binding);
-  let assemblyFormat = "`<` $binding `>`";
-  let genVerifyDecl = 1;
-}
-
 def DeviceConstraintAttr : AttrDef<WaveDialect, "DeviceConstraint"> {
   let mnemonic = "device_constraint";
   let description = [{
@@ -309,7 +296,7 @@ def DeviceConstraintAttr : AttrDef<WaveDialect, "DeviceConstraint"> {
     #wave.device_constraint<dim = <"M">, tile_size = [DEVICE_M] -> (DEVICE_M), device_dim = 0>
     ```
 
-    specifies that we want to distribute dimension M along the device with a tile size of DEVICE_M.
+    specifies that we want to distribute dimension `M` along the device with a tile size of `DEVICE_M`.
     This translates to an index constraint for all tensors of the shape [M, ?] ->
     index += (device_id * DEVICE_M, 0), where device_id is the id
     of the device on which the tensor is located.
@@ -320,12 +307,18 @@ def DeviceConstraintAttr : AttrDef<WaveDialect, "DeviceConstraint"> {
     device in the z dimension. The device id is used to compute the index
     offset for the tensor along the specified dimension.
 
-    Device constraints can be applied for multiple dimensions. For example,
-    constraint += [tkw.DeviceConstraint(M, DEVICE_M, 0)]
-    constraint += [tkw.DeviceConstraint(N, DEVICE_N, 1)]
-    specifies that we want to distribute DEVICE_M x DEVICE_N tiles of the tensor
-    across the devices, where DEVICE_M and DEVICE_N are the tile sizes for
-    dimensions M and N respectively.
+    Device constraints can be applied for multiple dimensions. For example:
+
+    ```mlir
+    wave.constraints = [
+      #wave.device_constraint<dim = <"M">, tile_size = [DEVICE_M] -> (DEVICE_M), device_dim = 0>
+      #wave.device_constraint<dim = <"N">, tile_size = [DEVICE_N] -> (DEVICE_N), device_dim = 1>
+    ]
+    ```
+
+    specifies that we want to distribute `DEVICE_M` x `DEVICE_N` tiles of the tensor
+    across the devices, where `DEVICE_M` and `DEVICE_N` are the tile sizes for
+    dimensions `M` and `N` respectively.
   }];
   let parameters = (ins "::wave::WaveSymbolAttr":$dim,
                         "::wave::WaveExpressionAttr":$tile_size,

@@ -18,13 +18,11 @@ func.func private @test_hw2() attributes { wave.constraints = [#hw_constraint2] 
 func.func private @test_wg1() attributes { wave.constraints = [#wg_constraint1] }
 
 // CHECK: #wave.workgroup_constraint<dim = <"M">, tile_size = [BLOCK_M]
-// CHECK: -> (BLOCK_M floordiv 4), workgroup_dim = <x>, iters = [M] -> (M), per_device_dim = <"DEVICE_M">>
+// CHECK: -> (BLOCK_M floordiv 4), workgroup_dim = <x>>
 #wg_constraint2 = #wave.workgroup_constraint<dim = <"M">,
                                              tile_size = [BLOCK_M] -> (BLOCK_M floordiv 4),
                                              workgroup_dim = <x>,
-                                             primary = true,
-                                             iters = [M] -> (M),
-                                             per_device_dim = <"DEVICE_M">>
+                                             primary = true>
 func.func private @test_wg2() attributes { wave.constraints = [#wg_constraint2] }
 
 
@@ -60,12 +58,6 @@ func.func private @test_wave2() attributes { wave.constraints = [#wv_constraint2
                                              ((((WG1 * (M ceildiv BLOCK_M) + WG0) mod (GROUP_SIZE_N * (M ceildiv BLOCK_M))) floordiv GROUP_SIZE_N)),
                                              workgroup_dim = <x>>
 func.func private @test_reodering() attributes { wave.constraints = [#ro_constraint] }
-
-
-// CHECK: #wave.iterator_binding<{k = #wave.symbol<"K">, m = #wave.symbol<"M">, n = #wave.symbol<"N">}>
-#ib_constraint = #wave.iterator_binding<{ m = #wave.symbol<"M">, n = #wave.symbol<"N">, k = #wave.symbol<"K"> }>
-func.func private @test_iterator_binding() attributes { wave.constraints = [#ib_constraint] }
-
 
 // CHECK: #wave.device_constraint<dim = <"M">, tile_size = [DEVICE_M] -> (DEVICE_M), device_dim = 0>
 #dv_constraint = #wave.device_constraint<dim = <"M">, tile_size = [DEVICE_M] -> (DEVICE_M), device_dim = 0>

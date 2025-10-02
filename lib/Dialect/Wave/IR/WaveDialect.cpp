@@ -230,7 +230,7 @@ wave::WaveDialect::verifyOperationAttribute(mlir::Operation *op,
     for (auto attr : attrs) {
       if (!llvm::isa<wave::HardwareConstraintAttr, wave::DeviceConstraintAttr,
                      wave::WorkgroupConstraintAttr, wave::WaveConstraintAttr,
-                     wave::TilingConstraintAttr, wave::IteratorBindingAttr,
+                     wave::TilingConstraintAttr,
                      wave::ReorderingConstraintAttr>(attr)) {
         return op->emitError() << attr << " unexpected attribute";
       }
