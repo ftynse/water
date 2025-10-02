@@ -214,7 +214,7 @@ def WaveConstraintAttr : AttrDef<WaveDialect, "WaveConstraint"> {
                           wg_constraint = #wg_constraint>
     ```
 
-    that we want distribute the K dimension among multiple waves which
+    that we want distribute the K dimension among multiple waves with
     each wave operating on a tile size of WAVE_K. The assumption is
     that the K dimension has already been distributed among workgroups.
     If the K dimension has been distributed among workgroups with a
