@@ -325,8 +325,9 @@ LogicalResult MmaOp::verify() {
 static LogicalResult
 verifyIndexElementsPerThread(Operation *op, mlir::DictionaryAttr indexDict,
                              std::optional<int64_t> elementsPerThread,
-                             Type type) {
-  auto vectorType = dyn_cast<VectorType>(type);
+                             wave::WaveTensorType tensorType,
+                             Type maybeVectorType) {
+  auto vectorType = dyn_cast<VectorType>(maybeVectorType);
   auto vectorSize = vectorType
                         ? std::optional<int64_t>(vectorType.getDimSize(0))
                         : std::nullopt;
@@ -353,7 +354,8 @@ verifyIndexElementsPerThread(Operation *op, mlir::DictionaryAttr indexDict,
     hyper = wave::WaveHyperparameterAttr::get(
         op->getContext(), DictionaryAttr::get(op->getContext()));
 
-  SmallVector<int64_t> shape = getUncollapsedVectorShape(indexDict, hyper);
+  SmallVector<int64_t> shape =
+      getUncollapsedVectorShape(tensorType.getShape(), indexDict, hyper);
   int64_t nonUnit = 1;
   bool hadDynamic = false;
   for (auto [i, size] : llvm::enumerate(shape)) {
@@ -444,9 +446,9 @@ static LogicalResult verifyReadWriteBounds(Location loc,
 }
 
 LogicalResult ReadOp::verify() {
-  if (failed(verifyIndexElementsPerThread(*this, getIndexAttr(),
-                                          getElementsPerThread(),
-                                          getResult().getType())))
+  if (failed(verifyIndexElementsPerThread(
+          *this, getIndexAttr(), getElementsPerThread(), getMemory().getType(),
+          getResult().getType())))
     return failure();
 
   wave::WaveReadWriteBoundsAttr bounds =
@@ -486,9 +488,9 @@ mlir::LogicalResult wave::RegisterOp::verify() {
 //-----------------------------------------------------------------------------
 
 LogicalResult WriteOp::verify() {
-  if (failed(verifyIndexElementsPerThread(*this, getIndexAttr(),
-                                          getElementsPerThread(),
-                                          getValueToStore().getType())))
+  if (failed(verifyIndexElementsPerThread(
+          *this, getIndexAttr(), getElementsPerThread(), getMemory().getType(),
+          getValueToStore().getType())))
     return failure();
 
   wave::WaveReadWriteBoundsAttr bounds =

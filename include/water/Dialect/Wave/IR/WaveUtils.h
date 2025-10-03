@@ -24,7 +24,8 @@ namespace wave {
 // which is secretly a list. Returns failure when the index sequence step cannot
 // be evaluated statically.
 std::optional<uint64_t>
-getPositionOfVectorizedDim(mlir::DictionaryAttr indexDict,
+getPositionOfVectorizedDim(llvm::ArrayRef<wave::WaveSymbolAttr> shape,
+                           mlir::DictionaryAttr indexDict,
                            wave::WaveHyperparameterAttr hyper);
 
 // Return the vector shape implied by the index sequence and hyperparameteters,
@@ -32,7 +33,8 @@ getPositionOfVectorizedDim(mlir::DictionaryAttr indexDict,
 // hyperparameter values. The step may be indicated as ShapedType::kDynamic if
 // it it cannot be fully evaluated.
 llvm::SmallVector<int64_t>
-getUncollapsedVectorShape(mlir::DictionaryAttr indexDict,
+getUncollapsedVectorShape(llvm::ArrayRef<wave::WaveSymbolAttr> shape,
+                          mlir::DictionaryAttr indexDict,
                           wave::WaveHyperparameterAttr hyper);
 
 /// Resolve named Wave symbols to concrete integer values using the

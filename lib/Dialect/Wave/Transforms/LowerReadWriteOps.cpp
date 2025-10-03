@@ -128,21 +128,6 @@ buildMask(Location loc, wave::WaveReadWriteBoundsAttr boundsDict,
     return Value();
 
   const uint64_t rank = startIdx.size();
-
-  // This logic operates after the "expansion" pass that usually unrolls all
-  // tensor dimensions but one so the extent along them is 1. The dimension with
-  // non-unit extent is considered to be vectorized.
-  std::optional<uint64_t> vectorizedDim =
-      wave::getPositionOfVectorizedDim(indexDict, hyper);
-  if (!vectorizedDim.has_value())
-    return failure();
-
-  if (*vectorizedDim != rank - 1) {
-    LLVM_DEBUG(
-        LDBG() << "unsupported masked load along non-innermost dimension");
-    return failure();
-  }
-
   IndexType idxType = rewriter.getIndexType();
   VectorType vecIdxType = VectorType::get({elementsPerThread}, idxType);
   IntegerType i1Type = IntegerType::get(rewriter.getContext(), 1);
@@ -164,7 +149,7 @@ buildMask(Location loc, wave::WaveReadWriteBoundsAttr boundsDict,
     Value bound = boundVals[0];
 
     Value clause;
-    if (d == *vectorizedDim) {
+    if (d == rank - 1) {
       // iota [0..L-1] : vector<index>
       Value iota = rewriter.create<vector::StepOp>(loc, vecIdxType);
 
@@ -232,11 +217,55 @@ static void buildVectorWrite(Location loc, PatternRewriter &rewriter, Value mem,
   }
 }
 
-/// Extract hyperparameters from a Wave type converter instance.
-static wave::WaveHyperparameterAttr
-getHyperparametersFromConverter(const TypeConverter *base) {
-  auto &tc = static_cast<const wave::WaveTypeConverter &>(*base);
-  return tc.getHyperparameters();
+// Common lowering for memory operations such as read/write. Checks whether
+// enough information is present on the operation and constructs the starting
+// index (populates the trailing vector argument) and eventually the mask.
+template <typename OpTy>
+static FailureOr<Value>
+memoryOpLowering(ConversionPatternRewriter &rewriter,
+                 const TypeConverter *typeConverter, OpTy op,
+                 wave::WaveTensorType memoryType, VectorType vectorType,
+                 SmallVectorImpl<Value> &startIndices) {
+
+  int64_t elementsPerThread = vectorType.getNumElements();
+
+  ArrayRef<wave::WaveSymbolAttr> orderedSyms = memoryType.getShape();
+
+  wave::WaveReadWriteBoundsAttr boundsDict = op.getBoundsAttr();
+  wave::WaveHyperparameterAttr hyper =
+      static_cast<const wave::WaveTypeConverter &>(*typeConverter)
+          .getHyperparameters();
+
+  // This logic operates after the "expansion" pass that usually unrolls all
+  // tensor dimensions but one so the extent along them is 1. The dimension
+  // with non-unit extent is considered to be vectorized.
+  DictionaryAttr indexDict = op.getIndexAttr();
+  if (!indexDict)
+    return rewriter.notifyMatchFailure(
+        op, "cannot lower without 'index' attribute");
+  std::optional<uint64_t> vectorizedDim =
+      wave::getPositionOfVectorizedDim(orderedSyms, indexDict, hyper);
+
+  if (!vectorizedDim.has_value() ||
+      *vectorizedDim != memoryType.getRank() - 1) {
+    return rewriter.notifyMatchFailure(
+        op, "unsupported load along non-innermost dimension");
+  }
+
+  FailureOr<SmallVector<Value>> maybeStartIndices =
+      buildStartIndices(op->getLoc(), indexDict, orderedSyms, rewriter, hyper);
+  if (failed(maybeStartIndices))
+    return rewriter.notifyMatchFailure(
+        op, "failed to convert start indices to affine");
+  startIndices = std::move(*maybeStartIndices);
+
+  FailureOr<Value> mask =
+      buildMask(op->getLoc(), boundsDict, orderedSyms, rewriter, indexDict,
+                hyper, startIndices, elementsPerThread);
+  if (failed(mask))
+    return rewriter.notifyMatchFailure(op, "couldn't build the required mask");
+
+  return mask;
 }
 
 class ReadOpLoweringPattern : public OpConversionPattern<wave::ReadOp> {
@@ -246,48 +275,22 @@ public:
   LogicalResult
   matchAndRewrite(wave::ReadOp op, wave::ReadOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    Location loc = op.getLoc();
-
     Type convertedType =
         getTypeConverter()->convertType(op.getResult().getType());
     if (!convertedType)
       return rewriter.notifyMatchFailure(op,
                                          "WaveTensorType conversion failed");
-
     auto vectorType = cast<VectorType>(convertedType);
-    int64_t elementsPerThread = vectorType.getNumElements();
-
-    Value base = adaptor.getMemory();
-    auto memoryType = cast<wave::WaveTensorType>(op.getMemory().getType());
-    ArrayRef<wave::WaveSymbolAttr> orderedSyms = memoryType.getShape();
-
-    wave::WaveReadWriteBoundsAttr boundsDict = op.getBoundsAttr();
-    DictionaryAttr indexDict = op.getIndexAttr();
-    if (!indexDict)
-      return rewriter.notifyMatchFailure(
-          op, "cannot lower without 'index' attribute");
-
-    wave::WaveHyperparameterAttr hyper =
-        getHyperparametersFromConverter(getTypeConverter());
-
-    FailureOr<SmallVector<Value>> startIndices =
-        buildStartIndices(loc, indexDict, orderedSyms, rewriter, hyper);
-    if (failed(startIndices))
-      return rewriter.notifyMatchFailure(
-          op, "failed to convert start indices to affine");
-
+    SmallVector<Value> startIndices;
     FailureOr<Value> mask =
-        buildMask(loc, boundsDict, orderedSyms, rewriter, indexDict, hyper,
-                  *startIndices, elementsPerThread);
+        memoryOpLowering(rewriter, getTypeConverter(), op,
+                         op.getMemory().getType(), vectorType, startIndices);
     if (failed(mask))
-      return rewriter.notifyMatchFailure(op,
-                                         "couldn't build the required mask");
+      return failure();
 
-    Value readOp =
-        buildVectorRead(loc, rewriter, base, *startIndices, vectorType, *mask);
-
+    Value readOp = buildVectorRead(op.getLoc(), rewriter, adaptor.getMemory(),
+                                   startIndices, vectorType, *mask);
     rewriter.replaceOp(op, readOp);
-
     return success();
   }
 };
@@ -299,38 +302,17 @@ public:
   LogicalResult
   matchAndRewrite(wave::WriteOp op, wave::WriteOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    Location loc = op.getLoc();
-
-    Value base = adaptor.getMemory();
     Value vec = adaptor.getValueToStore();
     auto vecType = cast<VectorType>(vec.getType());
-    auto memoryType = cast<wave::WaveTensorType>(op.getMemory().getType());
-    ArrayRef<wave::WaveSymbolAttr> orderedSyms = memoryType.getShape();
-    int64_t elementsPerThread = vecType.getNumElements();
-    wave::WaveReadWriteBoundsAttr boundsDict = op.getBoundsAttr();
-    DictionaryAttr indexDict = op.getIndexAttr();
-    if (!indexDict)
-      return rewriter.notifyMatchFailure(
-          op, "cannot lower without 'index' attribute");
-
-    wave::WaveHyperparameterAttr hyper =
-        getHyperparametersFromConverter(getTypeConverter());
-
-    FailureOr<SmallVector<Value>> indices =
-        buildStartIndices(loc, indexDict, orderedSyms, rewriter, hyper);
-    if (failed(indices))
-      return rewriter.notifyMatchFailure(
-          op, "failed to convert start indices to affine");
-
+    SmallVector<Value> startIndices;
     FailureOr<Value> mask =
-        buildMask(loc, boundsDict, orderedSyms, rewriter, indexDict, hyper,
-                  *indices, elementsPerThread);
+        memoryOpLowering(rewriter, getTypeConverter(), op,
+                         op.getMemory().getType(), vecType, startIndices);
     if (failed(mask))
-      return rewriter.notifyMatchFailure(op,
-                                         "couldn't build the required mask");
+      return failure();
 
-    buildVectorWrite(loc, rewriter, base, *indices, vec, *mask);
-
+    buildVectorWrite(op.getLoc(), rewriter, adaptor.getMemory(), startIndices,
+                     vec, *mask);
     rewriter.eraseOp(op);
     return success();
   }
