@@ -187,7 +187,9 @@ def _convert_expr_to_fraction(
 
 
 def convert_sympy_to_affine_map(
-    expr: sympy.core.expr.Expr, symbols: List[str]
+    expr: sympy.core.expr.Expr,
+    symbols: List[str],
+    verify: bool = False,
 ) -> ir.AffineMap:
     """
     Convert a sympy expression to an MLIR AffineMap using fractional algebra.
@@ -206,11 +208,19 @@ def convert_sympy_to_affine_map(
     fraction = _convert_expr_to_fraction(expr, symbols)
 
     # Final validation: we must have valid fraction (i.e. denominator = 1) result for AffineMap
-    if not AffineFraction.is_affine_expr_constant_one(fraction.denominator):
+    # FIXME: This is now blocked by https://github.com/iree-org/wave/issues/337. We cannot enforce
+    # valid fraction out of Wave-generated Sympy expressions. Put this on by default once the issue is fixed
+    # in Wave.
+    if verify and not AffineFraction.is_affine_expr_constant_one(fraction.denominator):
         raise AffineConversionError(
             f"Expression results in invalid fraction: {expr}\n"
             f"  Numerator: {fraction.numerator}\n"
             f"  Denominator: {fraction.denominator}"
         )
 
-    return ir.AffineMap.get(0, len(symbols), [fraction.numerator])
+    # AffineExpr will take care of simplifying `x floordiv 1` to `x`.
+    return ir.AffineMap.get(
+        0,
+        len(symbols),
+        [ir.AffineExpr.get_floor_div(fraction.numerator, fraction.denominator)],
+    )
