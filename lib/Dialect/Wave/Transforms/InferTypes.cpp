@@ -28,7 +28,7 @@ namespace wave {
 namespace {
 
 // Core lattice for type/shape inference of wave tensors. In addition to the
-// bottom and top states, it can represent have a concrete type which bay be
+// bottom and top states, it can represent have a concrete type which may be
 // a fully specified tensor type (specific) or an underspecified type (any). The
 // JOIN function is defined by the following table:
 //
