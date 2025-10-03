@@ -63,8 +63,8 @@ materializeAffine(Location loc, ArrayRef<wave::WaveSymbolAttr> symbols,
     else if (std::optional<int64_t> value = hyper.getSymbolValue(name)) {
       v = rewriter.create<arith::ConstantIndexOp>(loc, *value);
     } else {
-      emitError(loc) << "unknown hyperparameter symbol '" << name << "'";
-      return failure();
+      LLVM_DEBUG(llvm::errs() << "symbol: " << name << "\n");
+      assert(false && "unknown symbol, should have been caught by verifiers");
     }
     baseSymVals.push_back(v);
   }
@@ -111,34 +111,6 @@ buildStartIndices(Location loc, DictionaryAttr indexDict,
   return indices;
 }
 
-/// Find the index of a dimension with the largest step as specified by the
-/// indexing expression, after substituting the provided hyperparameters. In
-/// case of a tie, take the dimension that is farther in the index dictionary,
-/// which is secretly a list.
-static std::optional<uint64_t>
-findDimWithLargestStep(DictionaryAttr indexDict,
-                       wave::WaveHyperparameterAttr hyper) {
-  uint64_t bestIdx = -1;
-  std::optional<int64_t> bestSize; // largest constant size seen so far
-
-  for (auto &&[i, entry] : llvm::enumerate(indexDict)) {
-    auto mapAttr = cast<wave::WaveIndexMappingAttr>(entry.getValue());
-    std::optional<SmallVector<int64_t>> folded =
-        wave::evaluateMapWithHyperparams(mapAttr.getStep(),
-                                         mapAttr.getSymbolNames(), hyper);
-    if (!folded)
-      return std::nullopt;
-    assert(folded->size() == 1 && "expected single-result map");
-    int64_t size = (*folded)[0];
-
-    if (!bestSize || size >= *bestSize) {
-      bestSize = size;
-      bestIdx = i;
-    }
-  }
-  return bestIdx;
-}
-
 /// Build a per-thread mask:
 ///
 ///   mask = AND_d ( id_start_d(elements_per_thread) <
@@ -161,7 +133,7 @@ buildMask(Location loc, wave::WaveReadWriteBoundsAttr boundsDict,
   // tensor dimensions but one so the extent along them is 1. The dimension with
   // non-unit extent is considered to be vectorized.
   std::optional<uint64_t> vectorizedDim =
-      findDimWithLargestStep(indexDict, hyper);
+      wave::getPositionOfVectorizedDim(indexDict, hyper);
   if (!vectorizedDim.has_value())
     return failure();
 

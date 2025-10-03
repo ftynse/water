@@ -11,11 +11,16 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "water/Dialect/Wave/IR/WaveAttrs.h"
+#include "water/Dialect/Wave/IR/WaveDialect.h"
 #include "water/Dialect/Wave/IR/WaveInterfaces.h"
 #include "water/Dialect/Wave/IR/WaveTypes.h"
+#include "water/Dialect/Wave/IR/WaveUtils.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
+
+using namespace mlir;
+using namespace wave;
 
 //-----------------------------------------------------------------------------
 // Custom parsing and printing hooks. These must be defined before including the
@@ -76,9 +81,6 @@ static void printSingleSymbol(mlir::OpAsmPrinter &printer, mlir::Operation *,
                               wave::WaveSymbolAttr symbolAttr) {
   printer.printSymbolName(symbolAttr.getName());
 }
-
-using namespace mlir;
-using namespace wave;
 
 #define GET_OP_CLASSES
 #include "water/Dialect/Wave/IR/WaveOps.cpp.inc"
@@ -317,24 +319,83 @@ LogicalResult MmaOp::verify() {
 // ReadOp
 //-----------------------------------------------------------------------------
 
-// Check that if the given operation uses a vector type, its size is equal to
-// the elements-per-thread attribute value.
-template <typename OpTy>
-static LogicalResult verifyElementsPerThread(OpTy op, Type type) {
+// Check the well-formedness of the index attribute (must have at most one
+// non-unit dimension) and its correspondence with the explicit elements per
+// thread, if provided, and with the number of elements in the vector type.
+static LogicalResult
+verifyIndexElementsPerThread(Operation *op, mlir::DictionaryAttr indexDict,
+                             std::optional<int64_t> elementsPerThread,
+                             Type type) {
   auto vectorType = dyn_cast<VectorType>(type);
-  if (!vectorType)
+  auto vectorSize = vectorType
+                        ? std::optional<int64_t>(vectorType.getDimSize(0))
+                        : std::nullopt;
+
+  if (elementsPerThread && vectorSize && *elementsPerThread != *vectorSize) {
+    return op->emitOpError()
+           << "expected result vector type to have the "
+              "number of elements per thread matching the attribute ("
+           << *elementsPerThread << "), got " << vectorType.getDimSize(0);
+  }
+
+  if (!indexDict)
     return success();
 
-  std::optional<int64_t> elementsPerThread = op.getElementsPerThread();
-  if (!elementsPerThread)
+  wave::WaveHyperparameterAttr hyper = wave::WaveHyperparameterAttr();
+  for (Operation *cur = op; cur != nullptr && !hyper;
+       cur = cur->getParentOp()) {
+    hyper = cur->getAttrOfType<wave::WaveHyperparameterAttr>(
+        WaveDialect::kHyperparameterAttrName);
+  }
+  // Default to empty hyperparameter set, sometimes we can run checks even in
+  // absence of these.
+  if (!hyper)
+    hyper = wave::WaveHyperparameterAttr::get(
+        op->getContext(), DictionaryAttr::get(op->getContext()));
+
+  SmallVector<int64_t> shape = getUncollapsedVectorShape(indexDict, hyper);
+  int64_t nonUnit = 1;
+  bool hadDynamic = false;
+  for (auto [i, size] : llvm::enumerate(shape)) {
+    if (ShapedType::isDynamic(size)) {
+      hadDynamic = true;
+      continue;
+    }
+
+    if (size == 1) {
+      continue;
+    }
+    if (nonUnit == 1) {
+      nonUnit = size;
+      continue;
+    }
+
+    InFlightDiagnostic diag =
+        op->emitError() << "'index' has more than one entry with non-unit step";
+    diag.attachNote() << "second non-unit step dimension: " << i;
+    return diag;
+  }
+
+  // If there were unevaluated steps, they may end up matching later on.
+  if (hadDynamic)
     return success();
 
-  if (*elementsPerThread == vectorType.getDimSize(0))
-    return success();
-  return op.emitOpError()
-         << "expected result vector type to have the "
-            "number of elements per thread matching the attribute ("
-         << *elementsPerThread << "), got " << vectorType.getDimSize(0);
+  if (elementsPerThread && nonUnit != *elementsPerThread) {
+    return op->emitError() << "vectorized dimension step in the index "
+                              "expression with current hyperparameters ("
+                           << nonUnit
+                           << ") doesn't match the explicitly specified "
+                              "elements per thread value ("
+                           << *elementsPerThread << ")";
+  }
+
+  if (vectorSize && nonUnit != *vectorSize) {
+    return op->emitError() << "vectorized dimension step in the index "
+                              "expression with current hyperparameters ("
+                           << nonUnit << ") doesn't match the vector size ("
+                           << *vectorSize << ")";
+  }
+  return success();
 }
 
 // Check that if the given read/write operation has bound expressions specified,
@@ -383,7 +444,9 @@ static LogicalResult verifyReadWriteBounds(Location loc,
 }
 
 LogicalResult ReadOp::verify() {
-  if (failed(verifyElementsPerThread(*this, getResult().getType())))
+  if (failed(verifyIndexElementsPerThread(*this, getIndexAttr(),
+                                          getElementsPerThread(),
+                                          getResult().getType())))
     return failure();
 
   wave::WaveReadWriteBoundsAttr bounds =
@@ -423,7 +486,9 @@ mlir::LogicalResult wave::RegisterOp::verify() {
 //-----------------------------------------------------------------------------
 
 LogicalResult WriteOp::verify() {
-  if (failed(verifyElementsPerThread(*this, getValueToStore().getType())))
+  if (failed(verifyIndexElementsPerThread(*this, getIndexAttr(),
+                                          getElementsPerThread(),
+                                          getValueToStore().getType())))
     return failure();
 
   wave::WaveReadWriteBoundsAttr bounds =

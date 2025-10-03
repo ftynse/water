@@ -272,3 +272,54 @@ func.func @bounds_wrong_type(%mem: !wave.tensor<[@N] of f32>) {
   wave.read %mem { bounds = #wave.read_write_bounds<{ N = 42 }> } : (!wave.tensor<[@N] of f32>) -> !wave.tensor<[@N] of f32, <register>>
   return
 }
+
+// -----
+
+func.func @read_index_multi_step(%mem: !wave.tensor<[@M, @N] of f32>) {
+  // expected-error @below {{'index' has more than one entry with non-unit step}}
+  // expected-note @below {{second non-unit step dimension: 1}}
+  wave.read %mem index {
+    M : [T0] -> (T0, 2, 1),
+    N : [T1] -> (T1, 2, 1)
+  } : (!wave.tensor<[@M, @N] of f32>) -> !wave.tensor<any of f32, <register>>
+  return
+}
+
+// -----
+
+func.func @read_index_elements_per_thread_mismatch(%mem: !wave.tensor<[@M, @N] of f32>) {
+  // expected-error @below {{vectorized dimension step in the index expression with current hyperparameters (2) doesn't match the explicitly specified elements per thread value (4)}}
+  wave.read %mem index {
+    M : [T0] -> (T0, 2, 1),
+    N : [T1] -> (T1, 1, 1)
+  } {
+    elements_per_thread = 4
+  } : (!wave.tensor<[@M, @N] of f32>) -> !wave.tensor<any of f32, <register>>
+  return
+}
+
+
+// -----
+
+func.func @read_index_type_mismatch(%mem: !wave.tensor<[@M, @N] of f32>) {
+  // expected-error @below {{vectorized dimension step in the index expression with current hyperparameters (2) doesn't match the vector size (4)}}
+  wave.read %mem index {
+    M : [T0] -> (T0, 2, 1),
+    N : [T1] -> (T1, 1, 1)
+  } : (!wave.tensor<[@M, @N] of f32>) -> vector<4xf32>
+  return
+}
+
+// -----
+
+func.func @read_index_multi_step_eval(%mem: !wave.tensor<[@M, @N] of f32>) attributes {
+  wave.hyperparameters = #wave.hyperparameters<{X = 1, Y = 1, M = 100, N = 200}>
+} {
+  // expected-error @below {{'index' has more than one entry with non-unit step}}
+  // expected-note @below {{second non-unit step dimension: 1}}
+  wave.read %mem index {
+    M : [T0, X] -> (T0, 2 * X, 1),
+    N : [T1, X, Y] -> (T1, X + Y, 1)
+  } : (!wave.tensor<[@M, @N] of f32>) -> vector<4xf32>
+  return
+}

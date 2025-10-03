@@ -15,6 +15,40 @@
 
 using namespace mlir;
 
+SmallVector<int64_t>
+wave::getUncollapsedVectorShape(mlir::DictionaryAttr indexDict,
+                                wave::WaveHyperparameterAttr hyper) {
+  return llvm::map_to_vector(
+      indexDict.getValue(), [&](const NamedAttribute &entry) {
+        auto mapAttr = cast<wave::WaveIndexMappingAttr>(entry.getValue());
+        std::optional<SmallVector<int64_t>> folded =
+            wave::evaluateMapWithHyperparams(mapAttr.getStep(),
+                                             mapAttr.getSymbolNames(), hyper);
+        if (!folded)
+          return ShapedType::kDynamic;
+        assert(folded->size() == 1 && "expected single-result map");
+        return (*folded)[0];
+      });
+}
+
+std::optional<uint64_t>
+wave::getPositionOfVectorizedDim(mlir::DictionaryAttr indexDict,
+                                 wave::WaveHyperparameterAttr hyper) {
+  uint64_t bestIdx = static_cast<uint64_t>(-1);
+  std::optional<int64_t> bestSize; // largest constant size seen so far
+  for (auto [i, size] :
+       llvm::enumerate(getUncollapsedVectorShape(indexDict, hyper))) {
+    if (ShapedType::isDynamic(size))
+      return std::nullopt;
+    if (!bestSize || size >= *bestSize) {
+      bestSize = size;
+      bestIdx = i;
+    }
+  }
+  assert(bestIdx != static_cast<uint64_t>(-1));
+  return bestIdx;
+}
+
 std::optional<llvm::SmallVector<int64_t>>
 wave::resolveSymbolNames(llvm::ArrayRef<wave::WaveSymbolAttr> names,
                          wave::WaveHyperparameterAttr hyper) {
