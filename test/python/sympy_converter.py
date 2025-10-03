@@ -29,43 +29,47 @@ def test_basic_conversion():
 def test_mul_conversion():
     symbols = ["x", "y"]
 
+    result = convert_sympy_to_affine_map(sympy.sympify("x/2"), symbols)
+    # CHECK: ()[s0, s1] -> (s0 floordiv 2)
+    print(result)
+
     try:
-        convert_sympy_to_affine_map(sympy.sympify("x/4"), symbols)
+        convert_sympy_to_affine_map(sympy.sympify("x/4"), symbols, True)
     except AffineConversionError as e:
         assert "Expression results in invalid fraction: x/4" in str(e)
     else:
         assert False, "Expected to fail with AffineConversionError."
 
     try:
-        convert_sympy_to_affine_map(sympy.sympify("x/y"), symbols)
+        convert_sympy_to_affine_map(sympy.sympify("x/y"), symbols, True)
     except AffineConversionError as e:
         assert "Expression results in invalid fraction: x/y" in str(e)
     else:
         assert False, "Expected to fail with AffineConversionError."
 
     try:
-        convert_sympy_to_affine_map(sympy.sympify("3/x"), symbols)
+        convert_sympy_to_affine_map(sympy.sympify("3/x"), symbols, True)
     except AffineConversionError as e:
         assert "Expression results in invalid fraction: 3/x" in str(e)
     else:
         assert False, "Expected to fail with AffineConversionError."
 
     try:
-        convert_sympy_to_affine_map(sympy.sympify("y*(2/3)"), symbols)
+        convert_sympy_to_affine_map(sympy.sympify("y*(2/3)"), symbols, True)
     except AffineConversionError as e:
         assert "Expression results in invalid fraction: 2*y/3" in str(e)
     else:
         assert False, "Expected to fail with AffineConversionError."
 
     try:
-        convert_sympy_to_affine_map(sympy.sympify("1/y"), symbols)
+        convert_sympy_to_affine_map(sympy.sympify("1/y"), symbols, True)
     except AffineConversionError as e:
         assert "Expression results in invalid fraction: 1/y" in str(e)
     else:
         assert False, "Expected to fail with AffineConversionError."
 
     try:
-        convert_sympy_to_affine_map(sympy.sympify("(x+5)/(y+x)"), symbols)
+        convert_sympy_to_affine_map(sympy.sympify("(x+5)/(y+x)"), symbols, True)
     except AffineConversionError as e:
         assert "Expression results in invalid fraction: (x + 5)/(x + y)" in str(e)
     else:
@@ -77,7 +81,7 @@ def test_rational_conversion():
     symbols = []
 
     try:
-        convert_sympy_to_affine_map(sympy.sympify("1/2"), symbols)
+        convert_sympy_to_affine_map(sympy.sympify("1/2"), symbols, True)
     except AffineConversionError as e:
         assert "Expression results in invalid fraction: 1/2" in str(e)
     else:
