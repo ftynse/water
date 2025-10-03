@@ -1,4 +1,4 @@
-// RUN: water-opt %s -allow-unregistered-dialect -lower-wave-to-mlir -split-input-file --verify-diagnostics | FileCheck %s
+// RUN: water-opt %s -allow-unregistered-dialect -lower-wave-to-mlir --mlir-print-local-scope --split-input-file --verify-diagnostics | FileCheck %s
 
 module attributes {wave.normal_form = #wave.normal_form<full_types,memory_only_types>} {
   func.func @no_hyperparams() {
@@ -186,26 +186,22 @@ func.func @lower_alloc() attributes {wave.hyperparameters = #wave.hyperparameter
 
 // -----
 
+
 module attributes {wave.normal_form = #wave.normal_form<full_types,memory_only_types>} {
 // CHECK-LABEL: @lower_read
-func.func @lower_read(%mem: !wave.tensor<[@M] of f16, <global>>) attributes {wave.hyperparameters = #wave.hyperparameters<{BLOCK_M = 64, BLOCK_N = 64, M = 128, N = 128}>}  {
-  // CHECK-DAG: #[[MAP2:.*]] = affine_map<()[s0, s1] -> (s0 + s1 * 64 - (s0 floordiv 64) * 32)>
-  // CHECK-DAG: #[[MAPY:.*]] = affine_map<()[s0, s1] -> (s0 * 64 + s1 * 32)>
-
-  // CHECK: %[[TIDX_X:.*]] = gpu.thread_id x
-  // CHECK: %[[BIDX_X:.*]] = gpu.block_id  x
-  // CHECK: %[[TIDX_Y:.*]] = gpu.thread_id y
-  // CHECK: %[[BIDX_Y:.*]] = gpu.block_id  y
-
-  // CHECK: %[[ROW:.*]] = affine.apply #[[MAP2]]()[%[[TIDX_X]], %[[BIDX_X]]]
-  // CHECK: %[[COL:.*]] = affine.apply #[[MAPY]]()[%[[BIDX_Y]], %[[TIDX_Y]]]
-
-  // CHECK: %[[VEC:.+]] = vector.load {{.*}}[%[[ROW]], %[[COL]]] : memref<{{.*}}xf16{{.*}}>, vector<32xf16>
-
+func.func @lower_read(%mem: !wave.tensor<[@M, @N] of f16, <global>>) attributes {wave.hyperparameters = #wave.hyperparameters<{BLOCK_M = 64, BLOCK_N = 64, M = 128, N = 128}>}  {
   %0 = wave.read %mem index {
+      // CHECK: %[[BIDX_X:.*]] = gpu.block_id x
+      // CHECK: %[[TIDX_X:.*]] = gpu.thread_id x
+      // Note: BLOCK_M = 64
+      // CHECK: %[[ROW:.*]] = affine.apply affine_map<()[s0, s1] -> (s0 * 64 + (s1 floordiv 64) * 32 + s1 mod 64)>()[%[[BIDX_X]], %[[TIDX_X]]]
       M : [BLOCK_M, WG0, T0] -> (BLOCK_M * WG0 + (BLOCK_M floordiv 2) * (T0 floordiv 64) + T0 mod 64, 1, 64),
+      // CHECK: %[[TIDX_Y:.*]] = gpu.thread_id y
+      // CHECK: %[[BIDX_Y:.*]] = gpu.block_id y
+      // CHECK: %[[COL:.*]] = affine.apply affine_map<()[s0, s1] -> (s1 * 64 + s0 * 32)>()[%[[TIDX_Y]], %[[BIDX_Y]]]
       N : [T1, WG1, BLOCK_N] -> (WG1 * BLOCK_N + (BLOCK_N floordiv 2) * T1, BLOCK_N ceildiv 2, 1)}
-     : (!wave.tensor<[@M] of f16, <global>>) -> vector<8xf16>
+     : (!wave.tensor<[@M, @N] of f16, <global>>) -> vector<8xf16>
+     // CHECK: %[[VEC:.+]] = vector.load {{.*}}[%[[ROW]], %[[COL]]] : memref<{{.*}}xf16{{.*}}>, vector<8xf16>
 
   return
   }
@@ -219,43 +215,36 @@ module attributes {wave.normal_form = #wave.normal_form<full_types,memory_only_t
       attributes {wave.hyperparameters = #wave.hyperparameters<{BLOCK_M = 64, BLOCK_N = 64, M = 100, N = 50}>} {
 
     %v = wave.read %mem index {
+        // CHECK: %[[BIDX_X:.*]] = gpu.block_id x
+        // CHECK: %[[TIDX_X:.*]] = gpu.thread_id x
+        // CHECK: %[[ROW:.*]] = affine.apply affine_map<()[s0, s1] -> (s0 * 64 + s1)>()[%[[BIDX_X]], %[[TIDX_X]]]
         M : [BLOCK_M, WG0, T0] -> (WG0 * BLOCK_M + T0, 1, 64),
+        // CHECK: %[[BIDX_Y:.*]] = gpu.block_id y
+        // CHECK: %[[TIDX_Y:.*]] = gpu.thread_id y
+        // CHECK: %[[COL:.*]] = affine.apply affine_map<()[s0, s1] -> (s0 * 64 + s1 * 32)>()[%[[BIDX_Y]], %[[TIDX_Y]]]
         N : [WG1, T1, BLOCK_N] -> (WG1 * BLOCK_N + T1 * 32, 64, 1)
       } { bounds = {
         M = #wave.distributed_shape<[M] -> (M)>,
         N = #wave.distributed_shape<[N] -> (N)>}}
       : (!wave.tensor<[@M, @N] of f16, <global>>) -> vector<4xf16>
+      // Bounds for dim 0.
+      // CHECK: %[[DIM0_SIZE:.+]] = affine.apply affine_map<() -> (100)>()
+      // CHECK: %[[DIM0_CMP:.+]] = arith.cmpi slt, %[[ROW]], %[[DIM0_SIZE]]
+      // CHECK: %[[DIM0_CMP_VEC:.+]] = vector.broadcast %[[DIM0_CMP]] : i1 to vector<4xi1>
+
+      // Bounds for dim 1 (vectorized).
+      // CHECK: %[[DIM1_SIZE:.+]] = affine.apply affine_map<() -> (50)>()
+      // CHECK: %[[IOTA:.+]] = vector.step : vector<4xindex>
+      // CHECK: %[[COL_VEC_BASE:.+]] = vector.broadcast %[[COL]] : index to vector<4xindex>
+      // CHECK: %[[COL_VEC:.+]] = arith.addi %[[COL_VEC_BASE]], %[[IOTA]]
+      // CHECK: %[[DIM1_SIZE_VEC:.+]] = vector.broadcast %[[DIM1_SIZE]] : index to vector<4xindex>
+      // CHECK: %[[DIM1_CMP_VEC:.+]] = arith.cmpi slt, %[[COL_VEC]], %[[DIM1_SIZE_VEC]]
+
+      // Masked load.
+      // CHECK: %[[MASK:.+]] = arith.andi %[[DIM0_CMP_VEC]], %[[DIM1_CMP_VEC]]
+      // CHECK: %[[PASSTHRU:.+]] = arith.constant dense<0.000000e+00> : vector<4xf16>
+      // CHECK: vector.maskedload %{{.*}}[%[[ROW]], %[[COL]]], %[[MASK]], %[[PASSTHRU]]
 
     return
   }
 }
-
-// CHECK-DAG: #[[MAP_ROW:.*]] = affine_map<()[s0, s1] -> (s1 * 64 + s0)>
-// CHECK-DAG: #[[MAP_COL:.*]] = affine_map<()[s0, s1] -> (s1 * 64 + s0 * 32)>
-
-// ids
-// CHECK: %[[TIDX_X:.*]] = gpu.thread_id x
-// CHECK: %[[BIDX_X:.*]] = gpu.block_id  x
-// CHECK: %[[TIDX_Y:.*]] = gpu.thread_id y
-// CHECK: %[[BIDX_Y:.*]] = gpu.block_id  y
-
-// start indices
-// CHECK: %[[ROW:.*]] = affine.apply #[[MAP_ROW]]()[%[[TIDX_X]], %[[BIDX_X]]]
-// CHECK: %[[COL:.*]] = affine.apply #[[MAP_COL]]()[%[[BIDX_Y]], %[[TIDX_Y]]]
-
-// lane-wise offsets
-// CHECK: %[[STEP:.+]] = arith.constant dense<{{\[[^]]+\]}}> : vector<4xindex>
-// CHECK: %[[COLV:.*]] = vector.broadcast %[[COL]] : index to vector<4xindex>
-// CHECK: %[[LANEIDX:.*]] = arith.addi %[[COLV]], %[[STEP]] : vector<4xindex>
-
-
-// CHECK: %[[COLBOUNDV:.*]] = vector.broadcast {{.*}} : index to vector<4xindex>
-// CHECK: %[[CMP0:.*]] = arith.cmpi slt, %[[LANEIDX]], %[[COLBOUNDV]] : vector<4xindex>
-
-
-// CHECK: %[[CMP1S:.*]] = arith.cmpi slt, %[[ROW]], {{.*}} : index
-// CHECK: %[[CMP1:.*]] = vector.broadcast %[[CMP1S]] : i1 to vector<4xi1>
-
-// AND and masked load
-// CHECK: %[[MASK:.*]] = arith.andi %[[CMP0]], %[[CMP1]] : vector<4xi1>
-// CHECK: %[[RES:.*]] = vector.maskedload {{.*}}\[%[[ROW]], %[[COL]]\], %[[MASK]], {{.*}} : {{.*}}, vector<4xi1>, vector<4xf16> into vector<4xf16>

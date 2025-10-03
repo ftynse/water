@@ -15,6 +15,11 @@
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+#include "llvm/Support/Debug.h"
+
+#define DEBUG_TYPE "wave-lowering"
+#define LDBG() llvm::dbgs() << "[" DEBUG_TYPE "] "
+
 using namespace mlir;
 
 namespace {
@@ -150,7 +155,7 @@ buildMask(Location loc, DictionaryAttr boundsDict,
   if (!boundsDict)
     return Value();
 
-  const int64_t rank = static_cast<int64_t>(startIdx.size());
+  const uint64_t rank = startIdx.size();
 
   // This logic operates after the "expansion" pass that usually unrolls all
   // tensor dimensions but one so the extent along them is 1. The dimension with
@@ -160,22 +165,20 @@ buildMask(Location loc, DictionaryAttr boundsDict,
   if (!vectorizedDim.has_value())
     return failure();
 
+  if (*vectorizedDim != rank - 1) {
+    LLVM_DEBUG(
+        LDBG() << "unsupported masked load along non-innermost dimension");
+    return failure();
+  }
+
   IndexType idxType = rewriter.getIndexType();
   VectorType vecIdxType = VectorType::get({elementsPerThread}, idxType);
   IntegerType i1Type = IntegerType::get(rewriter.getContext(), 1);
   VectorType maskType = VectorType::get({elementsPerThread}, i1Type);
 
-  // iota [0..L-1] : vector<index>
-  Value iota = rewriter.create<vector::StepOp>(loc, vecIdxType);
-
-  // Lane indices for fastest dim: start + iota
-  Value startFastVec = rewriter.create<vector::BroadcastOp>(
-      loc, vecIdxType, startIdx[*vectorizedDim]);
-  Value laneIdxFast = rewriter.create<arith::AddIOp>(loc, startFastVec, iota);
-
   // finalMask is the AND of per-dimension bound checks
   Value finalMask;
-  for (int64_t d = 0; d < rank; ++d) {
+  for (uint64_t d = 0; d < rank; ++d) {
     StringRef name = orderedSyms[d].getName();
     Attribute a = boundsDict.get(name);
     assert(a && "bounds dict missing entry for dimension symbol");
@@ -183,11 +186,22 @@ buildMask(Location loc, DictionaryAttr boundsDict,
     // Materialize bounds
     FailureOr<SmallVector<Value>> boundValsFo = materializeAffine(
         loc, boundAttr.getSymbolNames(), boundAttr.getShape(), rewriter, hyper);
+    if (failed(boundValsFo))
+      return failure();
     SmallVector<Value> boundVals = std::move(*boundValsFo);
     Value bound = boundVals[0];
 
     Value clause;
-    if (d == vectorizedDim) {
+    if (d == *vectorizedDim) {
+      // iota [0..L-1] : vector<index>
+      Value iota = rewriter.create<vector::StepOp>(loc, vecIdxType);
+
+      // Lane indices for fastest dim: start + iota
+      Value startFastVec =
+          rewriter.create<vector::BroadcastOp>(loc, vecIdxType, startIdx[d]);
+      Value laneIdxFast =
+          rewriter.create<arith::AddIOp>(loc, startFastVec, iota);
+
       // lane-wise compare: (start + iota) < bound
       Value boundVec =
           rewriter.create<vector::BroadcastOp>(loc, vecIdxType, bound);
@@ -262,7 +276,8 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
 
-    Type convertedType = getTypeConverter()->convertType(op);
+    Type convertedType =
+        getTypeConverter()->convertType(op.getResult().getType());
     if (!convertedType)
       return rewriter.notifyMatchFailure(op,
                                          "WaveTensorType conversion failed");
