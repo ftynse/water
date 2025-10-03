@@ -236,7 +236,7 @@ wave::detail::checkAndPropagateElementsPerThreadFromConstant(
       return mlir::failure();
     }
 
-    if (!(joined == toType)) {
+    if (joined != toType) {
       changeResult = mlir::ChangeResult::Change;
       toType = joined;
     }

@@ -37,7 +37,7 @@ def WaveElementsPerThreadOpInterface
     InterfaceMethod<[{
       Propagate elements per threads information from operands to results.
       Expected to return failure when a conflict is detected after printing
-      a descriptive error messages to the error stream provided.
+      a descriptive error message to the error stream provided.
       }],
       "::llvm::FailureOr<mlir::ChangeResult>",
       "propagateElementsPerThreadForward",
@@ -50,7 +50,7 @@ def WaveElementsPerThreadOpInterface
     InterfaceMethod<[{
       Propagate elements per threads information from results to operands.
       Expected to return failure when a conflict is detected after printing
-      a descriptive error messages to the error stream provided.
+      a descriptive error message to the error stream provided.
       }],
       "::llvm::FailureOr<mlir::ChangeResult>",
       "propagateElementsPerThreadBackward",

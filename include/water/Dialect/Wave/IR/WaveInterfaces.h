@@ -350,8 +350,8 @@ public:
   }
 };
 
-// Trait implementing the methods of the WaveElementsPerThreadOpInterface one to
-// one between operands and results.
+// Trait implementing the methods of the WaveElementsPerThreadOpInterface with
+// information flowing between operands and results.
 template <typename OpTy>
 class IdentityElementsPerThreadOpTrait
     : public mlir::OpTrait::TraitBase<OpTy, IdentityElementsPerThreadOpTrait> {

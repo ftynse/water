@@ -45,7 +45,7 @@ def WaterWaveInferTypesPass : Pass<"water-wave-infer-types"> {
   ];
 }
 
-def WaverWavePropagateElementsPerThreadPass
+def WaterWavePropagateElementsPerThreadPass
     : Pass<"water-wave-propagate-elements-per-thread"> {
   let summary = "Replace register-resident tensor types with vector types";
   let description = [{

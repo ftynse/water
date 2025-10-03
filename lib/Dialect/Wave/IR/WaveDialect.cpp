@@ -71,8 +71,8 @@ static llvm::LogicalResult verifyTypeRangeHyperparamUses(
   return llvm::success();
 }
 
-// Verify whether occurrence of Wave symbols, either as attributes or as stirng
-// name in relevant dictionaries, reference symbols listed as hyperparameters.
+// Verify whether occurrence of Wave symbols, either as attributes or as string
+// names in relevant dictionaries, reference symbols listed as hyperparameters.
 // Report errors otherwise using the provided callback. Collect used symbols
 // into the given set for future checks.
 static llvm::LogicalResult verifyAttributeHyperparamUses(
@@ -104,6 +104,7 @@ static llvm::LogicalResult verifyAttributeHyperparamUses(
     }
   }
 
+  // TODO: somehow get rid of these hardcoded magic names.
   static llvm::SmallVector<llvm::StringRef> fixmeMagicNames = {
       "T0", "T1", "T2", "WG0", "WG1", "WG2"};
 
