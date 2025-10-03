@@ -247,7 +247,6 @@ def ReadOp : WaveOp<"read", [
 
   let assemblyFormat = "$memory " # commonArgumentsSyntax # "attr-dict `:` "
                        "functional-type(operands, results)";
-
   let hasVerifier = 1;
 }
 

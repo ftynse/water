@@ -11,11 +11,16 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "water/Dialect/Wave/IR/WaveAttrs.h"
+#include "water/Dialect/Wave/IR/WaveDialect.h"
 #include "water/Dialect/Wave/IR/WaveInterfaces.h"
 #include "water/Dialect/Wave/IR/WaveTypes.h"
+#include "water/Dialect/Wave/IR/WaveUtils.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
+
+using namespace mlir;
+using namespace wave;
 
 //-----------------------------------------------------------------------------
 // Custom parsing and printing hooks. These must be defined before including the
@@ -76,9 +81,6 @@ static void printSingleSymbol(mlir::OpAsmPrinter &printer, mlir::Operation *,
                               wave::WaveSymbolAttr symbolAttr) {
   printer.printSymbolName(symbolAttr.getName());
 }
-
-using namespace mlir;
-using namespace wave;
 
 #define GET_OP_CLASSES
 #include "water/Dialect/Wave/IR/WaveOps.cpp.inc"
@@ -317,64 +319,145 @@ LogicalResult MmaOp::verify() {
 // ReadOp
 //-----------------------------------------------------------------------------
 
-// Check that if the given operation uses a vector type, its size is equal to
-// the elements-per-thread attribute value.
-template <typename OpTy>
-static LogicalResult verifyElementsPerThread(OpTy op, Type type) {
-  auto vectorType = dyn_cast<VectorType>(type);
-  if (!vectorType)
+// Check the well-formedness of the index attribute (must have at most one
+// non-unit dimension) and its correspondence with the explicit elements per
+// thread, if provided, and with the number of elements in the vector type.
+static LogicalResult
+verifyIndexElementsPerThread(Operation *op, mlir::DictionaryAttr indexDict,
+                             std::optional<int64_t> elementsPerThread,
+                             wave::WaveTensorType tensorType,
+                             Type maybeVectorType) {
+  auto vectorType = dyn_cast<VectorType>(maybeVectorType);
+  auto vectorSize = vectorType
+                        ? std::optional<int64_t>(vectorType.getDimSize(0))
+                        : std::nullopt;
+
+  if (elementsPerThread && vectorSize && *elementsPerThread != *vectorSize) {
+    return op->emitOpError()
+           << "expected result vector type to have the "
+              "number of elements per thread matching the attribute ("
+           << *elementsPerThread << "), got " << vectorType.getDimSize(0);
+  }
+
+  if (!indexDict)
     return success();
 
-  std::optional<int64_t> elementsPerThread = op.getElementsPerThread();
-  if (!elementsPerThread)
+  wave::WaveHyperparameterAttr hyper = wave::WaveHyperparameterAttr();
+  for (Operation *cur = op; cur != nullptr && !hyper;
+       cur = cur->getParentOp()) {
+    hyper = cur->getAttrOfType<wave::WaveHyperparameterAttr>(
+        WaveDialect::kHyperparameterAttrName);
+  }
+  // Default to empty hyperparameter set, sometimes we can run checks even in
+  // absence of these.
+  if (!hyper)
+    hyper = wave::WaveHyperparameterAttr::get(
+        op->getContext(), DictionaryAttr::get(op->getContext()));
+
+  SmallVector<int64_t> shape =
+      getUncollapsedVectorShape(tensorType.getShape(), indexDict, hyper);
+  int64_t nonUnit = 1;
+  bool hadDynamic = false;
+  for (auto [i, size] : llvm::enumerate(shape)) {
+    if (ShapedType::isDynamic(size)) {
+      hadDynamic = true;
+      continue;
+    }
+
+    if (size == 1) {
+      continue;
+    }
+    if (nonUnit == 1) {
+      nonUnit = size;
+      continue;
+    }
+
+    InFlightDiagnostic diag =
+        op->emitError() << "'index' has more than one entry with non-unit step";
+    diag.attachNote() << "second non-unit step dimension: " << i;
+    return diag;
+  }
+
+  // If there were unevaluated steps, they may end up matching later on.
+  if (hadDynamic)
     return success();
 
-  if (*elementsPerThread == vectorType.getDimSize(0))
-    return success();
-  return op.emitOpError()
-         << "expected result vector type to have the "
-            "number of elements per thread matching the attribute ("
-         << *elementsPerThread << "), got " << vectorType.getDimSize(0);
+  if (elementsPerThread && nonUnit != *elementsPerThread) {
+    return op->emitError() << "vectorized dimension step in the index "
+                              "expression with current hyperparameters ("
+                           << nonUnit
+                           << ") doesn't match the explicitly specified "
+                              "elements per thread value ("
+                           << *elementsPerThread << ")";
+  }
+
+  if (vectorSize && nonUnit != *vectorSize) {
+    return op->emitError() << "vectorized dimension step in the index "
+                              "expression with current hyperparameters ("
+                           << nonUnit << ") doesn't match the vector size ("
+                           << *vectorSize << ")";
+  }
+  return success();
 }
 
 // Check that if the given read/write operation has bound expressions specified,
 // each symbolic dimension of the WaveTensorType has exactly one bound
 // expression.
-template <typename OpTy>
-static LogicalResult verifyBounds(OpTy op, WaveTensorType tensorType) {
-  std::optional<WaveReadWriteBoundsAttr> maybeBounds = op.getBounds();
-  if (maybeBounds == std::nullopt)
-    return success();
+static LogicalResult verifyReadWriteBounds(Location loc,
+                                           wave::WaveTensorType boundedType,
+                                           DictionaryAttr bounds) {
+  assert(bounds && "expected non-null bounds");
+  assert(boundedType && "expected non-null type");
 
-  if (maybeBounds->getNumSymbols() != tensorType.getRank()) {
-    return op->emitOpError() << "expected as many bound expressions ("
-                             << maybeBounds->getNumSymbols()
-                             << ") as op tensor type has symbolic dimensions ("
-                             << tensorType.getRank() << ")";
+  // We need a fixed iteration order of names for determinism of error messages,
+  // so using a vector instead of a StringSet.
+  // TODO: consider refactoring bounds and other dictionary-like attributes to
+  // be indexed by symbol expressions rather than string attributes to avoid
+  // string comparisons everywhere.
+  SmallVector<StringRef> requiredSymbolNames = llvm::map_to_vector(
+      boundedType.getShape(),
+      [](wave::WaveSymbolAttr symbol) { return symbol.getName(); });
+  llvm::StringSet<> knownSymbolNames;
+  for (NamedAttribute value : bounds) {
+    if (!llvm::is_contained(requiredSymbolNames, value.getName().strref())) {
+      return emitError(loc)
+             << "'bounds' specified for a symbol " << value.getName()
+             << " not used in the "
+                "indexed memory tensor";
+    }
+
+    // Value type must be WaveDistributedShapeAttr.
+    if (!isa<wave::DistributedShapeAttr>(value.getValue()))
+      return emitError(loc)
+             << "'bounds' values must be WaveDistributedShapeAttr, got "
+             << value.getValue();
+
+    knownSymbolNames.insert(value.getName().strref());
   }
+  for (StringRef requiredName : requiredSymbolNames) {
+    if (knownSymbolNames.contains(requiredName))
+      continue;
 
-  if (auto failedSym =
-          llvm::find_if_not(tensorType.getShape(),
-                            [&maybeBounds](WaveSymbolAttr sym) {
-                              return maybeBounds->hasSymbol(sym.getName());
-                            });
-      failedSym != tensorType.getShape().end()) {
-    return op->emitOpError()
-           << "expected symbolic dimension " << failedSym->getName()
-           << " to have a bound expression";
+    return emitError(loc) << "bounds not provided for memory tensor symbol '"
+                          << requiredName << "'";
   }
 
   return success();
 }
 
 LogicalResult ReadOp::verify() {
-  Type type = getResult().getType();
-  auto tensorType = dyn_cast<WaveTensorType>(type);
-  if (tensorType && failed(verifyBounds(*this, tensorType))) {
+  if (failed(verifyIndexElementsPerThread(
+          *this, getIndexAttr(), getElementsPerThread(), getMemory().getType(),
+          getResult().getType())))
     return failure();
-  }
 
-  return verifyElementsPerThread(*this, type);
+  wave::WaveReadWriteBoundsAttr bounds =
+      getBounds().value_or(wave::WaveReadWriteBoundsAttr());
+  if (!bounds)
+    return success();
+
+  return verifyReadWriteBounds(getLoc(), getMemory().getType(),
+                               bounds.getMapping());
 }
 
 //-----------------------------------------------------------------------------
@@ -405,13 +488,18 @@ mlir::LogicalResult wave::RegisterOp::verify() {
 //-----------------------------------------------------------------------------
 
 LogicalResult WriteOp::verify() {
-  Type type = getValueToStore().getType();
-  auto tensorType = dyn_cast<WaveTensorType>(type);
-  if (tensorType && failed(verifyBounds(*this, tensorType))) {
+  if (failed(verifyIndexElementsPerThread(
+          *this, getIndexAttr(), getElementsPerThread(), getMemory().getType(),
+          getValueToStore().getType())))
     return failure();
-  }
 
-  return verifyElementsPerThread(*this, type);
+  wave::WaveReadWriteBoundsAttr bounds =
+      getBounds().value_or(wave::WaveReadWriteBoundsAttr());
+  if (!bounds)
+    return success();
+
+  return verifyReadWriteBounds(getLoc(), getMemory().getType(),
+                               bounds.getMapping());
 }
 
 //-----------------------------------------------------------------------------
