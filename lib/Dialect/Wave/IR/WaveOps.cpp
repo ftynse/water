@@ -5,7 +5,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "water/Dialect/Wave/IR/WaveOps.h"
-#include "water/Dialect/Wave/IR/WaveAttrs.h"
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -338,6 +337,9 @@ static LogicalResult verifyElementsPerThread(OpTy op, Type type) {
          << *elementsPerThread << "), got " << vectorType.getDimSize(0);
 }
 
+// Check that if the given read/write operation has bound expressions specified,
+// each symbolic dimension of the WaveTensorType has exactly one bound
+// expression.
 static LogicalResult verifyReadWriteBounds(Location loc,
                                            wave::WaveTensorType boundedType,
                                            DictionaryAttr bounds) {
@@ -356,8 +358,8 @@ static LogicalResult verifyReadWriteBounds(Location loc,
   for (NamedAttribute value : bounds) {
     if (!llvm::is_contained(requiredSymbolNames, value.getName().strref())) {
       return emitError(loc)
-             << "'bounds' specified for a symbol '" << value.getName()
-             << "' not used in the "
+             << "'bounds' specified for a symbol " << value.getName()
+             << " not used in the "
                 "indexed memory tensor";
     }
 
@@ -384,11 +386,13 @@ LogicalResult ReadOp::verify() {
   if (failed(verifyElementsPerThread(*this, getResult().getType())))
     return failure();
 
-  DictionaryAttr bounds = getBounds().value_or(DictionaryAttr());
+  wave::WaveReadWriteBoundsAttr bounds =
+      getBounds().value_or(wave::WaveReadWriteBoundsAttr());
   if (!bounds)
     return success();
 
-  return verifyReadWriteBounds(getLoc(), getMemory().getType(), bounds);
+  return verifyReadWriteBounds(getLoc(), getMemory().getType(),
+                               bounds.getMapping());
 }
 
 //-----------------------------------------------------------------------------
@@ -422,11 +426,13 @@ LogicalResult WriteOp::verify() {
   if (failed(verifyElementsPerThread(*this, getValueToStore().getType())))
     return failure();
 
-  DictionaryAttr bounds = getBounds().value_or(DictionaryAttr());
+  wave::WaveReadWriteBoundsAttr bounds =
+      getBounds().value_or(wave::WaveReadWriteBoundsAttr());
   if (!bounds)
     return success();
 
-  return verifyReadWriteBounds(getLoc(), getMemory().getType(), bounds);
+  return verifyReadWriteBounds(getLoc(), getMemory().getType(),
+                               bounds.getMapping());
 }
 
 //-----------------------------------------------------------------------------

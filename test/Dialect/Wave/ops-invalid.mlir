@@ -219,7 +219,6 @@ module attributes {wave.normal_form = #wave.normal_form<full_types>} {
         M : [BLOCK_M, WG0, T0] -> (BLOCK_M * WG0 + (BLOCK_M floordiv 2) * (T0 floordiv 64) + T0 mod 64, 1, 64),
         N : [T1, WG1, BLOCK_N] -> (WG1 * BLOCK_N + (BLOCK_N floordiv 2) * T1, BLOCK_N ceildiv 2, 1)}
       : (!wave.tensor<[@M] of f16, <global>>) -> !wave.tensor<[@M] of f16, <register>>
-
     return
   }
 }
@@ -248,4 +247,28 @@ module attributes {wave.normal_form = #wave.normal_form<full_types>} {
     %0 = wave.read %mem {elements_per_thread=4}: (!wave.tensor<[@M] of f16, <global>>) -> vector<42xf16>
     return
   }
+}
+
+// -----
+
+func.func @bounds_missing_dim(%mem: !wave.tensor<[@M, @N] of f32>, %val: !wave.tensor<[@M, @N] of f32, <register>>) {
+  // expected-error @below {{bounds not provided for memory tensor symbol 'N'}}
+  wave.write %val, %mem { bounds = #wave.read_write_bounds<{ M = #wave.distributed_shape<[BLOCK_M] -> (BLOCK_M * 64)>}> } : !wave.tensor<[@M, @N] of f32, <register>>, !wave.tensor<[@M, @N] of f32>
+  return
+}
+
+// -----
+
+func.func @bounds_extraneous_dim(%mem: !wave.tensor<[@N] of f32>, %val: !wave.tensor<[@N] of f32, <register>>) {
+  // expected-error @below {{'bounds' specified for a symbol "M" not used in the indexed memory tensor}}
+  wave.write %val, %mem { bounds = #wave.read_write_bounds<{ M = #wave.distributed_shape<[BLOCK_M] -> (BLOCK_M * 64)>}> } : !wave.tensor<[@N] of f32, <register>>, !wave.tensor<[@N] of f32>
+  return
+}
+
+// -----
+
+func.func @bounds_wrong_type(%mem: !wave.tensor<[@N] of f32>) {
+  // expected-error @below {{'bounds' values must be WaveDistributedShapeAttr, got 42 : i64}}
+  wave.read %mem { bounds = #wave.read_write_bounds<{ N = 42 }> } : (!wave.tensor<[@N] of f32>) -> !wave.tensor<[@N] of f32, <register>>
+  return
 }

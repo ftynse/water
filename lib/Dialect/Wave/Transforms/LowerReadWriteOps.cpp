@@ -148,7 +148,7 @@ findDimWithLargestStep(DictionaryAttr indexDict,
 /// whenever a bounds dictionary is provided. When it is not provided, return a
 /// null mask. If the vectorized dimension cannot be identified, return failure.
 static FailureOr<Value>
-buildMask(Location loc, DictionaryAttr boundsDict,
+buildMask(Location loc, wave::WaveReadWriteBoundsAttr boundsDict,
           ArrayRef<wave::WaveSymbolAttr> orderedSyms, PatternRewriter &rewriter,
           DictionaryAttr indexDict, wave::WaveHyperparameterAttr hyper,
           ArrayRef<Value> startIdx, int64_t elementsPerThread) {
@@ -180,7 +180,7 @@ buildMask(Location loc, DictionaryAttr boundsDict,
   Value finalMask;
   for (uint64_t d = 0; d < rank; ++d) {
     StringRef name = orderedSyms[d].getName();
-    Attribute a = boundsDict.get(name);
+    Attribute a = boundsDict.getMapping().get(name);
     assert(a && "bounds dict missing entry for dimension symbol");
     auto boundAttr = cast<wave::DistributedShapeAttr>(a);
     // Materialize bounds
@@ -289,7 +289,7 @@ public:
     auto memoryType = cast<wave::WaveTensorType>(op.getMemory().getType());
     ArrayRef<wave::WaveSymbolAttr> orderedSyms = memoryType.getShape();
 
-    DictionaryAttr boundsDict = op.getBoundsAttr();
+    wave::WaveReadWriteBoundsAttr boundsDict = op.getBoundsAttr();
     DictionaryAttr indexDict = op.getIndexAttr();
     if (!indexDict)
       return rewriter.notifyMatchFailure(
@@ -335,7 +335,7 @@ public:
     auto memoryType = cast<wave::WaveTensorType>(op.getMemory().getType());
     ArrayRef<wave::WaveSymbolAttr> orderedSyms = memoryType.getShape();
     int64_t elementsPerThread = vecType.getNumElements();
-    DictionaryAttr boundsDict = op.getBoundsAttr();
+    wave::WaveReadWriteBoundsAttr boundsDict = op.getBoundsAttr();
     DictionaryAttr indexDict = op.getIndexAttr();
     if (!indexDict)
       return rewriter.notifyMatchFailure(

@@ -223,9 +223,9 @@ module attributes {wave.normal_form = #wave.normal_form<full_types,memory_only_t
         // CHECK: %[[TIDX_Y:.*]] = gpu.thread_id y
         // CHECK: %[[COL:.*]] = affine.apply affine_map<()[s0, s1] -> (s0 * 64 + s1 * 32)>()[%[[BIDX_Y]], %[[TIDX_Y]]]
         N : [WG1, T1, BLOCK_N] -> (WG1 * BLOCK_N + T1 * 32, 64, 1)
-      } { bounds = {
+      } { bounds = #wave.read_write_bounds<{
         M = #wave.distributed_shape<[M] -> (M)>,
-        N = #wave.distributed_shape<[N] -> (N)>}}
+        N = #wave.distributed_shape<[N] -> (N)>}>}
       : (!wave.tensor<[@M, @N] of f16, <global>>) -> vector<4xf16>
       // Bounds for dim 0.
       // CHECK: %[[DIM0_SIZE:.+]] = affine.apply affine_map<() -> (100)>()
