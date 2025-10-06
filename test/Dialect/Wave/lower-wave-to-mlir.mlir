@@ -1,4 +1,4 @@
-// RUN: water-opt %s -allow-unregistered-dialect -lower-wave-to-mlir -split-input-file --verify-diagnostics | FileCheck %s
+// RUN: water-opt %s -allow-unregistered-dialect -lower-wave-to-mlir --mlir-print-local-scope --split-input-file --verify-diagnostics | FileCheck %s
 
 module attributes {wave.normal_form = #wave.normal_form<full_types,memory_only_types>} {
   func.func @no_hyperparams() {
@@ -180,6 +180,110 @@ func.func @lower_alloc() attributes {wave.hyperparameters = #wave.hyperparameter
   %buf = wave.allocate
     { distributed_shape = #wave.distributed_shape<[BLOCK_M, BLOCK_K] -> (BLOCK_M, BLOCK_K + 4)>}
     : !wave.tensor<[@M, @K] of bf16, <shared>>
+  return
+  }
+}
+
+// -----
+
+module attributes {wave.normal_form = #wave.normal_form<full_types,memory_only_types>} {
+// CHECK-LABEL: @lower_read
+func.func @lower_read(%mem: !wave.tensor<[@M, @N] of f16, <global>>) attributes {wave.hyperparameters = #wave.hyperparameters<{BLOCK_M = 64, BLOCK_N = 64, M = 128, N = 128}>}  {
+  %0 = wave.read %mem index {
+      // CHECK: %[[BIDX_X:.*]] = gpu.block_id x
+      // CHECK: %[[TIDX_X:.*]] = gpu.thread_id x
+      // Note: BLOCK_M = 64
+      // CHECK: %[[ROW:.*]] = affine.apply affine_map<()[s0, s1] -> (s0 * 64 + (s1 floordiv 64) * 32 + s1 mod 64)>()[%[[BIDX_X]], %[[TIDX_X]]]
+      M : [BLOCK_M, WG0, T0] -> (BLOCK_M * WG0 + (BLOCK_M floordiv 2) * (T0 floordiv 64) + T0 mod 64, 1, 64),
+      // CHECK: %[[TIDX_Y:.*]] = gpu.thread_id y
+      // CHECK: %[[BIDX_Y:.*]] = gpu.block_id y
+      // CHECK: %[[COL:.*]] = affine.apply affine_map<()[s0, s1] -> (s1 * 64 + s0 * 8)>()[%[[TIDX_Y]], %[[BIDX_Y]]]
+      N : [T1, WG1, BLOCK_N] -> (WG1 * BLOCK_N + (BLOCK_N floordiv 8) * T1, BLOCK_N ceildiv 8, 1)}
+     : (!wave.tensor<[@M, @N] of f16, <global>>) -> vector<8xf16>
+     // CHECK: %[[VEC:.+]] = vector.load {{.*}}[%[[ROW]], %[[COL]]] : memref<{{.*}}xf16{{.*}}>, vector<8xf16>
+
+  return
+  }
+}
+
+// -----
+
+module attributes {wave.normal_form = #wave.normal_form<full_types,memory_only_types>} {
+  // CHECK-LABEL: @lower_read_masked
+  func.func @lower_read_masked(%mem: !wave.tensor<[@M, @N] of f16, <global>>)
+      attributes {wave.hyperparameters = #wave.hyperparameters<{BLOCK_M = 64, BLOCK_N = 64, M = 100, N = 50}>} {
+
+    %v = wave.read %mem index {
+        // CHECK: %[[BIDX_X:.*]] = gpu.block_id x
+        // CHECK: %[[TIDX_X:.*]] = gpu.thread_id x
+        // CHECK: %[[ROW:.*]] = affine.apply affine_map<()[s0, s1] -> (s0 * 64 + s1)>()[%[[BIDX_X]], %[[TIDX_X]]]
+        M : [BLOCK_M, WG0, T0] -> (WG0 * BLOCK_M + T0, 1, 64),
+        // CHECK: %[[BIDX_Y:.*]] = gpu.block_id y
+        // CHECK: %[[TIDX_Y:.*]] = gpu.thread_id y
+        // CHECK: %[[COL:.*]] = affine.apply affine_map<()[s0, s1] -> (s0 * 64 + s1 * 32)>()[%[[BIDX_Y]], %[[TIDX_Y]]]
+        N : [WG1, T1, BLOCK_N] -> (WG1 * BLOCK_N + T1 * 32, 4, 1)
+      } { bounds = #wave.read_write_bounds<{
+        M = #wave.distributed_shape<[M] -> (M)>,
+        N = #wave.distributed_shape<[N] -> (N)>}>}
+      : (!wave.tensor<[@M, @N] of f16, <global>>) -> vector<4xf16>
+      // Bounds for dim 0.
+      // CHECK: %[[DIM0_SIZE:.+]] = affine.apply affine_map<() -> (100)>()
+      // CHECK: %[[DIM0_CMP:.+]] = arith.cmpi slt, %[[ROW]], %[[DIM0_SIZE]]
+      // CHECK: %[[DIM0_CMP_VEC:.+]] = vector.broadcast %[[DIM0_CMP]] : i1 to vector<4xi1>
+
+      // Bounds for dim 1 (vectorized).
+      // CHECK: %[[DIM1_SIZE:.+]] = affine.apply affine_map<() -> (50)>()
+      // CHECK: %[[IOTA:.+]] = vector.step : vector<4xindex>
+      // CHECK: %[[COL_VEC_BASE:.+]] = vector.broadcast %[[COL]] : index to vector<4xindex>
+      // CHECK: %[[COL_VEC:.+]] = arith.addi %[[COL_VEC_BASE]], %[[IOTA]]
+      // CHECK: %[[DIM1_SIZE_VEC:.+]] = vector.broadcast %[[DIM1_SIZE]] : index to vector<4xindex>
+      // CHECK: %[[DIM1_CMP_VEC:.+]] = arith.cmpi slt, %[[COL_VEC]], %[[DIM1_SIZE_VEC]]
+
+      // Masked load.
+      // CHECK: %[[MASK:.+]] = arith.andi %[[DIM0_CMP_VEC]], %[[DIM1_CMP_VEC]]
+      // CHECK: %[[PASSTHRU:.+]] = arith.constant dense<0.000000e+00> : vector<4xf16>
+      // CHECK: vector.maskedload %{{.*}}[%[[ROW]], %[[COL]]], %[[MASK]], %[[PASSTHRU]]
+
+    return
+  }
+}
+
+// -----
+
+module attributes {wave.normal_form = #wave.normal_form<full_types,memory_only_types>} {
+  // CHECK-LABEL: @refuse_non_trailing_load
+  func.func @refuse_non_trailing_load(%mem: !wave.tensor<[@M, @N] of f16, <global>>)
+      attributes {wave.hyperparameters = #wave.hyperparameters<{BLOCK_M = 64, BLOCK_N = 64, M = 100, N = 50}>} {
+
+    // CHECK: wave.read
+    %v = wave.read %mem index {
+        M : [BLOCK_M, WG0, T0] -> (WG0 * BLOCK_M + T0, 4, 64),
+        N : [WG1, T1, BLOCK_N] -> (WG1 * BLOCK_N + T1 * 32, 1, 1)
+      } : (!wave.tensor<[@M, @N] of f16, <global>>) -> vector<4xf16>
+    return
+  }
+}
+
+// -----
+
+module attributes {wave.normal_form = #wave.normal_form<full_types,memory_only_types>} {
+// CHECK-LABEL: @lower_read
+func.func @lower_read(%mem: !wave.tensor<[@M, @N] of f16, <global>>) attributes {wave.hyperparameters = #wave.hyperparameters<{BLOCK_M = 64, BLOCK_N = 64, M = 128, N = 128}>}  {
+  %cst = arith.constant 0.0 : f16
+  %reg = wave.register %cst : vector<8xf16>
+  wave.write %reg, %mem index {
+      // CHECK: %[[BIDX_X:.*]] = gpu.block_id x
+      // CHECK: %[[TIDX_X:.*]] = gpu.thread_id x
+      // Note: BLOCK_M = 64
+      // CHECK: %[[ROW:.*]] = affine.apply affine_map<()[s0, s1] -> (s0 * 64 + (s1 floordiv 64) * 32 + s1 mod 64)>()[%[[BIDX_X]], %[[TIDX_X]]]
+      M : [BLOCK_M, WG0, T0] -> (BLOCK_M * WG0 + (BLOCK_M floordiv 2) * (T0 floordiv 64) + T0 mod 64, 1, 64),
+      // CHECK: %[[TIDX_Y:.*]] = gpu.thread_id y
+      // CHECK: %[[BIDX_Y:.*]] = gpu.block_id y
+      // CHECK: %[[COL:.*]] = affine.apply affine_map<()[s0, s1] -> (s1 * 64 + s0 * 8)>()[%[[TIDX_Y]], %[[BIDX_Y]]]
+      N : [T1, WG1, BLOCK_N] -> (WG1 * BLOCK_N + (BLOCK_N floordiv 8) * T1, BLOCK_N ceildiv 8, 1)}
+     : vector<8xf16>, !wave.tensor<[@M, @N] of f16, <global>>
+     // CHECK: vector.store {{.*}}[%[[ROW]], %[[COL]]] : memref<{{.*}}xf16{{.*}}>, vector<8xf16>
+
   return
   }
 }

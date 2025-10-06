@@ -8,6 +8,7 @@
 #include "water/Dialect/Wave/IR/WaveDialect.h"
 #include "water/Dialect/Wave/Transforms/Passes.h"
 
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
@@ -30,9 +31,16 @@ struct LowerWaveToMLIRPass
     : public ::impl::LowerWaveToMLIRPassBase<LowerWaveToMLIRPass> {
   using LowerWaveToMLIRPassBase::LowerWaveToMLIRPassBase;
 
-  void getDependentDialects(mlir::DialectRegistry &registry) const override {
-    registry.insert<mlir::gpu::GPUDialect, mlir::memref::MemRefDialect,
-                    mlir::arith::ArithDialect>();
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<
+        // clang-format off
+      affine::AffineDialect,
+      arith::ArithDialect,
+      gpu::GPUDialect,
+      memref::MemRefDialect,
+      vector::VectorDialect
+        // clang-format on
+        >();
   }
 
   void runOnOperation() override {
@@ -47,9 +55,16 @@ struct LowerWaveToMLIRPass
       return signalPassFailure();
 
     ConversionTarget target(*ctx);
-    target.addLegalDialect<arith::ArithDialect, vector::VectorDialect,
-                           memref::MemRefDialect, gpu::GPUDialect>();
-    target.addIllegalOp<wave::RegisterOp, wave::AllocateOp>();
+    target.addLegalDialect<
+        // clang-format off
+      affine::AffineDialect,
+      arith::ArithDialect,
+      gpu::GPUDialect,
+      memref::MemRefDialect,
+      vector::VectorDialect
+        // clang-format on
+        >();
+    target.addIllegalOp<wave::AllocateOp, wave::RegisterOp>();
     ConversionConfig config;
     config.allowPatternRollback = false;
 
@@ -75,6 +90,7 @@ struct LowerWaveToMLIRPass
           wave::populateWaveRegisterLoweringPatterns(typeConverter, patterns);
           wave::populateWaveBinaryOpLoweringPatterns(typeConverter, patterns);
           wave::populateWaveAllocateOpLoweringPatterns(typeConverter, patterns);
+          wave::populateWaveReadWriteLoweringPatterns(typeConverter, patterns);
 
           if (failed(applyPartialConversion(op, target, std::move(patterns),
                                             config))) {
