@@ -68,7 +68,7 @@ materializeAffine(Location loc, ArrayRef<wave::WaveSymbolAttr> symbols,
     }
     baseSymVals.push_back(v);
   }
-  // In case map contains multiple results, create one apply per result
+  // In case map contains multiple results, create one apply per result.
   SmallVector<Value> results;
   results.reserve(map.getNumResults());
   for (AffineExpr expr : map.getResults()) {
@@ -87,7 +87,7 @@ materializeAffine(Location loc, ArrayRef<wave::WaveSymbolAttr> symbols,
 /// Build per-dimension start indices in the order specified by `orderedSyms`
 /// (the Wave tensor’s dim order). For each symbol name in `orderedSyms`, this
 /// looks up a WaveIndexMappingAttr in `indexDict`, materializes its `start`
-/// map and returns one index-typed Value per dimension
+/// map and returns one index-typed Value per dimension.
 static FailureOr<SmallVector<Value>>
 buildStartIndices(Location loc, DictionaryAttr indexDict,
                   ArrayRef<wave::WaveSymbolAttr> orderedSyms,
@@ -106,6 +106,7 @@ buildStartIndices(Location loc, DictionaryAttr indexDict,
     if (failed(startFo))
       return failure();
     SmallVector<Value> start = std::move(*startFo);
+    assert(llvm::hasSingleElement(start));
     indices.push_back(start[0]); // Start map has one result.
   }
   return indices;
@@ -133,14 +134,14 @@ buildMask(Location loc, wave::WaveReadWriteBoundsAttr boundsDict,
   IntegerType i1Type = IntegerType::get(rewriter.getContext(), 1);
   VectorType maskType = VectorType::get({elementsPerThread}, i1Type);
 
-  // finalMask is the AND of per-dimension bound checks
+  // finalMask is the AND of per-dimension bound checks.
   Value finalMask;
   for (uint64_t d = 0; d < rank; ++d) {
     StringRef name = orderedSyms[d].getName();
     Attribute a = boundsDict.getMapping().get(name);
     assert(a && "bounds dict missing entry for dimension symbol");
     auto boundAttr = cast<wave::DistributedShapeAttr>(a);
-    // Materialize bounds
+    // Materialize bounds.
     FailureOr<SmallVector<Value>> boundValsFo = materializeAffine(
         loc, boundAttr.getSymbolNames(), boundAttr.getShape(), rewriter, hyper);
     if (failed(boundValsFo))
@@ -153,19 +154,19 @@ buildMask(Location loc, wave::WaveReadWriteBoundsAttr boundsDict,
       // iota [0..L-1] : vector<index>
       Value iota = rewriter.create<vector::StepOp>(loc, vecIdxType);
 
-      // Lane indices for fastest dim: start + iota
+      // Lane indices for fastest dim: start + iota.
       Value startFastVec =
           rewriter.create<vector::BroadcastOp>(loc, vecIdxType, startIdx[d]);
       Value laneIdxFast =
           rewriter.create<arith::AddIOp>(loc, startFastVec, iota);
 
-      // lane-wise compare: (start + iota) < bound
+      // lane-wise compare: (start + iota) < bound.
       Value boundVec =
           rewriter.create<vector::BroadcastOp>(loc, vecIdxType, bound);
       clause = rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt,
                                               laneIdxFast, boundVec);
     } else {
-      // scalar compare then broadcast: startIdx[d] < bound
+      // scalar compare then broadcast: startIdx[d] < bound.
       Value scalarCmp = rewriter.create<arith::CmpIOp>(
           loc, arith::CmpIPredicate::slt, startIdx[d], bound);
       clause = rewriter.create<vector::BroadcastOp>(loc, maskType, scalarCmp);
@@ -221,11 +222,10 @@ static void buildVectorWrite(Location loc, PatternRewriter &rewriter, Value mem,
 // enough information is present on the operation and constructs the starting
 // index (populates the trailing vector argument) and eventually the mask.
 template <typename OpTy>
-static FailureOr<Value>
-memoryOpLowering(ConversionPatternRewriter &rewriter,
-                 const TypeConverter *typeConverter, OpTy op,
-                 wave::WaveTensorType memoryType, VectorType vectorType,
-                 SmallVectorImpl<Value> &startIndices) {
+static FailureOr<Value> createMemoryIndicesAndMask(
+    ConversionPatternRewriter &rewriter, const TypeConverter *typeConverter,
+    OpTy op, wave::WaveTensorType memoryType, VectorType vectorType,
+    SmallVectorImpl<Value> &startIndices) {
 
   int64_t elementsPerThread = vectorType.getNumElements();
 
@@ -282,9 +282,9 @@ public:
                                          "WaveTensorType conversion failed");
     auto vectorType = cast<VectorType>(convertedType);
     SmallVector<Value> startIndices;
-    FailureOr<Value> mask =
-        memoryOpLowering(rewriter, getTypeConverter(), op,
-                         op.getMemory().getType(), vectorType, startIndices);
+    FailureOr<Value> mask = createMemoryIndicesAndMask(
+        rewriter, getTypeConverter(), op, op.getMemory().getType(), vectorType,
+        startIndices);
     if (failed(mask))
       return failure();
 
@@ -305,9 +305,9 @@ public:
     Value vec = adaptor.getValueToStore();
     auto vecType = cast<VectorType>(vec.getType());
     SmallVector<Value> startIndices;
-    FailureOr<Value> mask =
-        memoryOpLowering(rewriter, getTypeConverter(), op,
-                         op.getMemory().getType(), vecType, startIndices);
+    FailureOr<Value> mask = createMemoryIndicesAndMask(
+        rewriter, getTypeConverter(), op, op.getMemory().getType(), vecType,
+        startIndices);
     if (failed(mask))
       return failure();
 

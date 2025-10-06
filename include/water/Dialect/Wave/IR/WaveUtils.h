@@ -18,11 +18,11 @@
 #include "llvm/ADT/SmallVector.h"
 
 namespace wave {
-// Return the position of the dimension that is vectorized based on the index
-// sequence. The dimension with the largest step is considered to be vectorized.
-// In case of a tie, take the dimension that is farther in the index dictionary,
-// which is secretly a list. Returns failure when the index sequence step cannot
-// be evaluated statically.
+/// Return the position of the dimension that is vectorized based on the index
+/// sequence. The dimension with the largest step is considered to be
+/// vectorized. In case of a tie, take the dimension that is farther in the
+/// index dictionary, which is secretly a list. Return failure when the index
+/// sequence step cannot be evaluated statically.
 std::optional<uint64_t>
 getPositionOfVectorizedDim(llvm::ArrayRef<wave::WaveSymbolAttr> shape,
                            mlir::DictionaryAttr indexDict,
@@ -31,7 +31,7 @@ getPositionOfVectorizedDim(llvm::ArrayRef<wave::WaveSymbolAttr> shape,
 // Return the vector shape implied by the index sequence and hyperparameteters,
 // i.e., the step expression of the index sequence evaluated using the
 // hyperparameter values. The step may be indicated as ShapedType::kDynamic if
-// it it cannot be fully evaluated.
+// it cannot be fully evaluated.
 llvm::SmallVector<int64_t>
 getUncollapsedVectorShape(llvm::ArrayRef<wave::WaveSymbolAttr> shape,
                           mlir::DictionaryAttr indexDict,
@@ -44,9 +44,9 @@ resolveSymbolNames(llvm::ArrayRef<wave::WaveSymbolAttr> names,
                    wave::WaveHyperparameterAttr hyper);
 
 /// Substitute named symbol values used in the affine map by the constant values
-/// defined in the hyperparameter list. Return nullopt if the substitution
-/// doesn't yield constant results, in particular, if some symbols are not
-/// defined.
+/// defined in the hyperparameter list then evaluate the expressions to get
+/// concrete integer results. Return nullopt if the substitution doesn't yield
+/// constant results, in particular, if some symbols are not defined.
 std::optional<llvm::SmallVector<int64_t>>
 evaluateMapWithHyperparams(mlir::AffineMap map,
                            llvm::ArrayRef<wave::WaveSymbolAttr> symbolNames,
