@@ -165,16 +165,15 @@ bool WaveHyperparameterAttr::hasSymbol(StringRef symbolName) const {
 }
 
 //===----------------------------------------------------------------------===//
-// DistributedShapeAttr
+// ExprAttr
 //===----------------------------------------------------------------------===//
 
 std::optional<llvm::SmallVector<int64_t>>
-wave::DistributedShapeAttr::getResolvedShape(
-    wave::WaveHyperparameterAttr hyper) const {
+wave::ExprAttr::getResolvedShape(wave::WaveHyperparameterAttr hyper) const {
   return wave::evaluateMapWithHyperparams(getShape(), getSymbolNames(), hyper);
 }
 
-Attribute DistributedShapeAttr::parse(AsmParser &parser, Type) {
+Attribute ExprAttr::parse(AsmParser &parser, Type) {
   if (parser.parseLess())
     return {};
 
@@ -221,8 +220,9 @@ Attribute DistributedShapeAttr::parse(AsmParser &parser, Type) {
     return {};
 
   if (results.empty()) {
-    parser.emitError(parser.getCurrentLocation(),
-                     "distributed shape must have at least one dimension");
+    parser.emitError(
+        parser.getCurrentLocation(),
+        "wave expression attribute must have at least one dimension");
     return {};
   }
   if (parser.parseGreater())
@@ -235,7 +235,7 @@ Attribute DistributedShapeAttr::parse(AsmParser &parser, Type) {
   return get(parser.getContext(), symbolNameAttrs, shape);
 }
 
-void DistributedShapeAttr::print(mlir::AsmPrinter &printer) const {
+void ExprAttr::print(mlir::AsmPrinter &printer) const {
   // Print symbol names like: [M, K] -> ( ... )
   printer << "<[";
   llvm::SmallVector<llvm::StringRef> names;

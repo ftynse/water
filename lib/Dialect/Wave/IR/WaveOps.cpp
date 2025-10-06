@@ -426,11 +426,10 @@ static LogicalResult verifyReadWriteBounds(Location loc,
                 "indexed memory tensor";
     }
 
-    // Value type must be WaveDistributedShapeAttr.
-    if (!isa<wave::DistributedShapeAttr>(value.getValue()))
-      return emitError(loc)
-             << "'bounds' values must be WaveDistributedShapeAttr, got "
-             << value.getValue();
+    // Value type must be WaveExprAttr.
+    if (!isa<wave::ExprAttr>(value.getValue()))
+      return emitError(loc) << "'bounds' values must be WaveExprAttr, got "
+                            << value.getValue();
 
     knownSymbolNames.insert(value.getName().strref());
   }

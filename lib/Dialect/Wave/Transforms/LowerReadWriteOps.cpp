@@ -140,7 +140,7 @@ buildMask(Location loc, wave::WaveReadWriteBoundsAttr boundsDict,
     StringRef name = orderedSyms[d].getName();
     Attribute a = boundsDict.getMapping().get(name);
     assert(a && "bounds dict missing entry for dimension symbol");
-    auto boundAttr = cast<wave::DistributedShapeAttr>(a);
+    auto boundAttr = cast<wave::ExprAttr>(a);
     // Materialize bounds.
     FailureOr<SmallVector<Value>> boundValsFo = materializeAffine(
         loc, boundAttr.getSymbolNames(), boundAttr.getShape(), rewriter, hyper);
