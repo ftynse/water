@@ -56,7 +56,7 @@ LogicalResult wave::verifyWaveIndexMappings(Operation *op) {
         failed(checkNoDims(strideMap, "stride")))
       return failure();
 
-    unsigned declared = mapping.getSymbolNames().size();
+    unsigned declared = mapping.getSymbols().size();
     if (startMap.getNumSymbols() != declared ||
         stepMap.getNumSymbols() != declared ||
         strideMap.getNumSymbols() != declared)
@@ -81,18 +81,16 @@ ParseResult wave::parseWaveIndexDict(OpAsmParser &parser, DictionaryAttr &out) {
     return failure();
 
   auto parseOne = [&]() -> ParseResult {
-    llvm::StringRef symbolName;
-    if (parser.parseKeyword(&symbolName) || parser.parseColon())
+    wave::WaveSymbolAttr symbol;
+    if (parser.parseCustomAttributeWithFallback(symbol) || parser.parseColon())
       return failure();
 
-    // Parse WaveIndexMappingAttr using its custom parser to allow concise
-    // syntax.
-    auto indexMapping = wave::WaveIndexMappingAttr::parse(parser, Type{});
-    if (!indexMapping)
+    wave::WaveIndexMappingAttr indexMapping;
+    if (parser.parseCustomAttributeWithFallback(indexMapping))
       return failure();
 
-    mappingDict.emplace_back(parser.getBuilder().getStringAttr(symbolName),
-                             indexMapping);
+    mappingDict.emplace_back(
+        parser.getBuilder().getStringAttr(symbol.getName()), indexMapping);
     return success();
   };
 
@@ -108,7 +106,8 @@ void wave::printWaveIndexDict(OpAsmPrinter &printer, Operation *op,
   printer.getStream() << "{";
   llvm::interleaveComma(
       dict, printer.getStream(), [&](NamedAttribute namedAttr) {
-        printer.getStream() << namedAttr.getName().getValue() << " : ";
+        printer.getStream()
+            << "<" << namedAttr.getName().getValue() << ">" << " : ";
         if (auto mappingAttr = llvm::dyn_cast<wave::WaveIndexMappingAttr>(
                 namedAttr.getValue())) {
           mappingAttr.print(printer);

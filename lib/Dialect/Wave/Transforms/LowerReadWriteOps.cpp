@@ -4,6 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "water/Dialect/Wave/IR/WaveAttrs.h"
 #include "water/Dialect/Wave/IR/WaveDialect.h"
 #include "water/Dialect/Wave/IR/WaveOps.h"
 #include "water/Dialect/Wave/IR/WaveUtils.h"
@@ -16,6 +17,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/ErrorHandling.h"
 
 #define DEBUG_TYPE "wave-lowering"
 #define LDBG() llvm::dbgs() << "[" DEBUG_TYPE "] "
@@ -71,29 +73,47 @@ materializeAffine(Location loc, ArrayRef<wave::WaveSymbolAttr> symbols,
 
   SmallVector<Value> baseSymVals;
   baseSymVals.reserve(map.getNumSymbols());
-  int64_t numSym = map.getNumSymbols();
-  for (int64_t i = 0; i < numSym; ++i) {
-    StringRef name = symbols[i].getName();
-
+  for (const wave::WaveSymbolAttr &symbol : symbols) {
     Value v;
-    if (name == "_T0")
+    switch (symbol.getKind()) {
+    case wave::WaveIndexSymbol::THREAD_0: {
       v = threadId(gpu::Dimension::x);
-    else if (name == "_T1")
-      v = threadId(gpu::Dimension::y);
-    else if (name == "_T2")
-      v = threadId(gpu::Dimension::z);
-    else if (name == "_WG0")
-      v = blockId(gpu::Dimension::x);
-    else if (name == "_WG1")
-      v = blockId(gpu::Dimension::y);
-    else if (name == "_WG2")
-      v = blockId(gpu::Dimension::z);
-    else if (std::optional<int64_t> value = hyper.getSymbolValue(name)) {
-      v = rewriter.create<arith::ConstantIndexOp>(loc, *value);
-    } else {
-      LLVM_DEBUG(llvm::errs() << "symbol: " << name << "\n");
-      assert(false && "unknown symbol, should have been caught by verifiers");
+      break;
     }
+    case wave::WaveIndexSymbol::THREAD_1: {
+      v = threadId(gpu::Dimension::y);
+      break;
+    }
+    case wave::WaveIndexSymbol::THREAD_2: {
+      v = threadId(gpu::Dimension::z);
+      break;
+    }
+    case wave::WaveIndexSymbol::WORKGROUP_0: {
+      v = blockId(gpu::Dimension::x);
+      break;
+    }
+    case wave::WaveIndexSymbol::WORKGROUP_1: {
+      v = blockId(gpu::Dimension::y);
+      break;
+    }
+    case wave::WaveIndexSymbol::WORKGROUP_2: {
+      v = blockId(gpu::Dimension::z);
+      break;
+    }
+    case wave::WaveIndexSymbol::NON_INDEX: {
+      if (std::optional<int64_t> value =
+              hyper.getSymbolValue(symbol.getName())) {
+        v = rewriter.create<arith::ConstantIndexOp>(loc, *value);
+      } else {
+        LLVM_DEBUG(llvm::errs() << "symbol: " << symbol.getName() << "\n");
+        assert(false && "unknown symbol, should have been caught by verifiers");
+      }
+      break;
+    }
+    default:
+      llvm_unreachable("invalid case");
+    }
+
     baseSymVals.push_back(v);
   }
   // In case map contains multiple results, create one apply per result.
@@ -130,7 +150,7 @@ buildStartIndices(Location loc, DictionaryAttr indexDict,
     auto mapAttr = cast<wave::WaveIndexMappingAttr>(a);
 
     FailureOr<SmallVector<Value>> startFo = materializeAffine(
-        loc, mapAttr.getSymbolNames(), mapAttr.getStart(), rewriter, hyper);
+        loc, mapAttr.getSymbols(), mapAttr.getStart(), rewriter, hyper);
     if (failed(startFo))
       return failure();
     SmallVector<Value> start = std::move(*startFo);
@@ -171,7 +191,7 @@ buildMask(Location loc, wave::WaveReadWriteBoundsAttr boundsDict,
     auto boundAttr = cast<wave::ExprAttr>(a);
     // Materialize bounds.
     FailureOr<SmallVector<Value>> boundValsFo = materializeAffine(
-        loc, boundAttr.getSymbolNames(), boundAttr.getShape(), rewriter, hyper);
+        loc, boundAttr.getSymbols(), boundAttr.getShape(), rewriter, hyper);
     if (failed(boundValsFo))
       return failure();
     SmallVector<Value> boundVals = std::move(*boundValsFo);

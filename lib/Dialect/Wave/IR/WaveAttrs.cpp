@@ -6,6 +6,7 @@
 
 #include "water/Dialect/Wave/IR/WaveAttrs.h"
 #include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "water/Dialect/Wave/IR/WaveDialect.h"
@@ -19,7 +20,10 @@
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -33,20 +37,6 @@ using namespace wave;
 //===----------------------------------------------------------------------===//
 // Helpers
 //===----------------------------------------------------------------------===//
-
-/// Helper function to parse a `WaveSymbolAttr`, keeping track of both the
-/// parse WaveSymbolAttr and the symbol name string.
-static ParseResult parseSymbol(SmallVectorImpl<WaveSymbolAttr> &symbolNameAttrs,
-                               SmallVectorImpl<StringRef> &symbolNames,
-                               AsmParser &parser) {
-  MLIRContext *context = parser.getContext();
-  StringRef symbolName;
-  if (failed(parser.parseKeyword(&symbolName)))
-    return failure();
-  symbolNameAttrs.push_back(WaveSymbolAttr::get(context, symbolName));
-  symbolNames.push_back(symbolName);
-  return success();
-};
 
 /// Helper function to parse an affine wave expression with the wave
 /// symbol names passed in `names`.
@@ -99,12 +89,18 @@ Attribute WaveIndexMappingAttr::parse(AsmParser &parser, Type type) {
   // This preserves meaningful symbol names while leveraging the existing
   // affine parser.
 
-  SmallVector<WaveSymbolAttr> symbolNameAttrs;
+  SmallVector<WaveSymbolAttr> symbolAttrs;
   SmallVector<StringRef> symbolNames;
 
   // Parse '[' symbol-names ']' allowing empty or non-empty lists.
   if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, [&]() {
-        return parseSymbol(symbolNameAttrs, symbolNames, parser);
+        WaveSymbolAttr symbolAttr;
+        if (failed(parser.parseCustomAttributeWithFallback(symbolAttr)))
+          return failure();
+
+        symbolAttrs.push_back(symbolAttr);
+        symbolNames.push_back(symbolAttr.getName());
+        return success();
       }))
     return {};
 
@@ -137,7 +133,7 @@ Attribute WaveIndexMappingAttr::parse(AsmParser &parser, Type type) {
   auto strideMap = AffineMap::get(
       /*numDims=*/0, /*numSymbols=*/symbolNames.size(), strideExpr, context);
 
-  return get(context, symbolNameAttrs, startMap, stepMap, strideMap);
+  return get(context, symbolAttrs, startMap, stepMap, strideMap);
 }
 
 void WaveIndexMappingAttr::print(AsmPrinter &printer) const {
@@ -146,8 +142,8 @@ void WaveIndexMappingAttr::print(AsmPrinter &printer) const {
   // Each expression is an affine map with the same numSymbols; we substitute
   // s0, s1, ... using the shared names when rendering each expression.
   printer << "[";
-  llvm::interleaveComma(getSymbolNames(), printer,
-                        [&](WaveSymbolAttr s) { printer << s.getName(); });
+  llvm::interleaveComma(getSymbols(), printer,
+                        [&](WaveSymbolAttr s) { printer.printAttribute(s); });
   printer << "] -> ";
 
   SmallVector<StringRef> allNames = getAllSymbolNames();
@@ -186,19 +182,25 @@ bool WaveHyperparameterAttr::hasSymbol(StringRef symbolName) const {
 
 std::optional<llvm::SmallVector<int64_t>>
 wave::ExprAttr::getResolvedShape(wave::WaveHyperparameterAttr hyper) const {
-  return wave::evaluateMapWithHyperparams(getShape(), getSymbolNames(), hyper);
+  return wave::evaluateMapWithHyperparams(getShape(), getSymbols(), hyper);
 }
 
 Attribute ExprAttr::parse(AsmParser &parser, Type) {
   if (parser.parseLess())
     return {};
 
-  SmallVector<WaveSymbolAttr> symbolNameAttrs;
+  SmallVector<WaveSymbolAttr> symbolAttrs;
   SmallVector<StringRef> symbolNames;
 
   // Parse '[' symbol-names ']' allowing empty or non-empty lists.
   if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, [&]() {
-        return parseSymbol(symbolNameAttrs, symbolNames, parser);
+        WaveSymbolAttr symbolAttr;
+        if (failed(parser.parseCustomAttributeWithFallback(symbolAttr)))
+          return failure();
+
+        symbolAttrs.push_back(symbolAttr);
+        symbolNames.push_back(symbolAttr.getName());
+        return success();
       }))
     return {};
 
@@ -231,24 +233,21 @@ Attribute ExprAttr::parse(AsmParser &parser, Type) {
   auto shape = AffineMap::get(/*numDims=*/0, /*numSymbols=*/symbolNames.size(),
                               results, context);
 
-  return get(parser.getContext(), symbolNameAttrs, shape);
+  return get(parser.getContext(), symbolAttrs, shape);
 }
 
 void ExprAttr::print(mlir::AsmPrinter &printer) const {
   // Print symbol names like: [M, K] -> ( ... )
   printer << "<[";
-  llvm::SmallVector<llvm::StringRef> names;
-  names.reserve(getSymbolNames().size());
-  llvm::interleaveComma(getSymbolNames(), printer.getStream(),
-                        [&](wave::WaveSymbolAttr s) {
-                          names.push_back(s.getName());
-                          printer << s.getName();
-                        });
+  llvm::interleaveComma(
+      getSymbols(), printer.getStream(),
+      [&](wave::WaveSymbolAttr s) { printer.printAttribute(s); });
   printer << "] -> (";
 
   // We have one map with N results. For each result expr, make a 1-result map
   // so we can reuse the identical stringifyWithNames(map,names) helper.
   mlir::AffineMap full = getShape(); // your stored map
+  llvm::SmallVector<llvm::StringRef> names = getAllSymbolNames();
   for (unsigned i = 0, e = full.getNumResults(); i < e; ++i) {
     if (i)
       printer << ", ";
@@ -262,6 +261,36 @@ void ExprAttr::print(mlir::AsmPrinter &printer) const {
 }
 
 //===----------------------------------------------------------------------===//
+// WaveSymbolAttr
+//===----------------------------------------------------------------------===//
+
+Attribute WaveSymbolAttr::parse(AsmParser &parser, Type type) {
+  MLIRContext *context = parser.getContext();
+  StringRef name;
+  if (parser.parseLess() || parser.parseKeyword(&name) || parser.parseGreater())
+    return {};
+
+  auto kind = llvm::StringSwitch<wave::WaveIndexSymbol>(name)
+                  .Case("D0", wave::WaveIndexSymbol::DEVICE_DIM_0)
+                  .Case("D1", wave::WaveIndexSymbol::DEVICE_DIM_1)
+                  .Case("D2", wave::WaveIndexSymbol::DEVICE_DIM_2)
+                  .Case("WG0", wave::WaveIndexSymbol::WORKGROUP_0)
+                  .Case("WG1", wave::WaveIndexSymbol::WORKGROUP_1)
+                  .Case("WG2", wave::WaveIndexSymbol::WORKGROUP_2)
+                  .Case("T0", wave::WaveIndexSymbol::THREAD_0)
+                  .Case("T1", wave::WaveIndexSymbol::THREAD_1)
+                  .Case("T2", wave::WaveIndexSymbol::THREAD_2)
+                  .Case("GPR_NUM", wave::WaveIndexSymbol::GPR_NUMBER)
+                  .Default(wave::WaveIndexSymbol::NON_INDEX);
+
+  return get(context, kind, name);
+}
+
+void WaveSymbolAttr::print(AsmPrinter &printer) const {
+  printer << "<" << getName() << ">";
+}
+
+//===----------------------------------------------------------------------===//
 // WaveExpressionAttr
 //===----------------------------------------------------------------------===//
 
@@ -269,12 +298,18 @@ Attribute WaveExpressionAttr::parse(AsmParser &parser, Type type) {
   // Parse custom syntax: '[' symbol-names ']' '->' '(' expr ')'
   // This preserves meaningful symbol names while leveraging the existing
   // affine parser.
-  SmallVector<WaveSymbolAttr> symbolNameAttrs;
+  SmallVector<WaveSymbolAttr> symbolAttrs;
   SmallVector<StringRef> symbolNames;
 
   // Parse '[' symbol-names ']' allowing empty or non-empty lists.
   if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, [&]() {
-        return parseSymbol(symbolNameAttrs, symbolNames, parser);
+        WaveSymbolAttr symbolAttr;
+        if (failed(parser.parseCustomAttributeWithFallback(symbolAttr)))
+          return failure();
+
+        symbolAttrs.push_back(symbolAttr);
+        symbolNames.push_back(symbolAttr.getName());
+        return success();
       }))
     return {};
 
@@ -295,7 +330,7 @@ Attribute WaveExpressionAttr::parse(AsmParser &parser, Type type) {
   auto map = AffineMap::get(
       /*numDims=*/0, /*numSymbols=*/symbolNames.size(), expr, context);
 
-  return get(context, symbolNameAttrs, map);
+  return get(context, symbolAttrs, map);
 }
 
 void WaveExpressionAttr::print(AsmPrinter &printer) const {
@@ -304,8 +339,9 @@ void WaveExpressionAttr::print(AsmPrinter &printer) const {
   // Each expression is an affine map with the same numSymbols; we substitute
   // s0, s1, ... using the shared names when rendering each expression.
   printer << "[";
-  llvm::interleaveComma(getSymbolNames(), printer,
-                        [&](WaveSymbolAttr s) { printer << s.getName(); });
+  llvm::interleaveComma(getSymbols(), printer, [&](WaveSymbolAttr s) {
+    printer.printAttribute(s) /*s.print(printer)*/;
+  });
   printer << "] -> ";
 
   SmallVector<StringRef> allNames = getAllSymbolNames();

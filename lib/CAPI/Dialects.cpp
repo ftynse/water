@@ -23,11 +23,13 @@ bool mlirAttributeIsAWaveSymbolAttr(MlirAttribute attr) {
   return llvm::isa<wave::WaveSymbolAttr>(unwrap(attr));
 }
 
-MlirAttribute mlirWaveSymbolAttrGet(MlirContext mlirCtx,
+MlirAttribute mlirWaveSymbolAttrGet(MlirContext mlirCtx, unsigned kind,
                                     MlirStringRef symbolNameStrRef) {
   mlir::MLIRContext *ctx = unwrap(mlirCtx);
+
   llvm::StringRef symbolName = unwrap(symbolNameStrRef);
-  return wrap(wave::WaveSymbolAttr::get(ctx, symbolName));
+  return wrap(wave::WaveSymbolAttr::get(
+      ctx, static_cast<wave::WaveIndexSymbol>(kind), symbolName));
 }
 
 MlirTypeID mlirWaveSymbolAttrGetTypeID() {

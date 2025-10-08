@@ -32,7 +32,7 @@ public:
     auto *typeConverter =
         static_cast<const wave::WaveTypeConverter *>(getTypeConverter());
     Type convertedResultType = typeConverter->convertTensorFromComponents(
-        distributedShape.getSymbolNames(), distributedShape.getShape(),
+        distributedShape.getSymbols(), distributedShape.getShape(),
         resultType.getElementType(), resultType.getAddressSpaceValue());
     if (!convertedResultType) {
       return rewriter.notifyMatchFailure(op,
