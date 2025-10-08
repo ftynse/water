@@ -293,6 +293,40 @@ def DeviceConstraintAttr : AttrDef<WaveDialect, "DeviceConstraint"> {
 // Other attributes
 //-----------------------------------------------------------------------------
 
+def WaveIndexSymbolEnum
+    : I32EnumAttr<"WaveIndexSymbol", "Index symbol", [
+  I32EnumAttrCase<"DEVICE_DIM_0", 0, "DD0">,
+  I32EnumAttrCase<"DEVICE_DIM_1", 1, "DD1">,
+  I32EnumAttrCase<"DEVICE_DIM_2", 2, "DD2">,
+  I32EnumAttrCase<"WORKGROUP_0", 3, "WG0">,
+  I32EnumAttrCase<"WORKGROUP_1", 4, "WG1">,
+  I32EnumAttrCase<"WORKGROUP_2", 5, "WG2">,
+  I32EnumAttrCase<"THREAD_0", 6, "T0">,
+  I32EnumAttrCase<"THREAD_1", 7, "T1">,
+  I32EnumAttrCase<"THREAD_2", 8, "T2">,
+  I32EnumAttrCase<"NON_INDEX", 9, "NON_IDX">,
+]> {
+  let cppNamespace = "::wave";
+  let genSpecializedAttr = 0;
+}
+
+def WaveIndexSymbolAttr
+    : AttrDef<WaveDialect, "WaveIndexSymbol"> {
+  let mnemonic = "index_symbol";
+  let description = [{
+    Base symbol used in symbolic expressions in the Wave dialect. This is
+    different from the SymbolRef hierarchy of attributes since it refers to
+    symbols, aka variables, in mathematical expressions as opposed to symbols
+    identifying global objects such as functions and global variables in
+    programs. Wave expression symbols are not part of the symbol table.
+  }];
+
+  let parameters = (ins EnumParameter<WaveIndexSymbolEnum>:$kind,
+                        StringRefParameter<"name of the symbol">:$name);
+
+  let hasCustomAssemblyFormat = 1;
+}
+
 def WaveSymbolAttr : AttrDef<WaveDialect, "WaveSymbol"> {
   let mnemonic = "symbol";
   let description = [{

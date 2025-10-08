@@ -19,6 +19,7 @@
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
@@ -259,6 +260,87 @@ void ExprAttr::print(mlir::AsmPrinter &printer) const {
     printer << stringifyWithNames(one, names);
   }
   printer << ")>";
+}
+
+//===----------------------------------------------------------------------===//
+// WaveSymbolAttr
+//===----------------------------------------------------------------------===//
+
+Attribute WaveIndexSymbolAttr::parse(AsmParser &parser, Type type) {
+  if (parser.parseLess())
+    return {};
+
+  MLIRContext *context = parser.getContext();
+  std::string name;
+  if (parser.parseString(&name))
+    return {};
+
+  auto kind = llvm::StringSwitch<wave::WaveIndexSymbol>(name)
+                  .Case("$D0", wave::WaveIndexSymbol::DEVICE_DIM_0)
+                  .Case("$D1", wave::WaveIndexSymbol::DEVICE_DIM_1)
+                  .Case("$D2", wave::WaveIndexSymbol::DEVICE_DIM_2)
+                  .Case("$WG0", wave::WaveIndexSymbol::WORKGROUP_0)
+                  .Case("$WG1", wave::WaveIndexSymbol::WORKGROUP_1)
+                  .Case("$WG2", wave::WaveIndexSymbol::WORKGROUP_2)
+                  .Case("$T0", wave::WaveIndexSymbol::THREAD_0)
+                  .Case("$T1", wave::WaveIndexSymbol::THREAD_1)
+                  .Case("$T2", wave::WaveIndexSymbol::THREAD_2)
+                  .Default(wave::WaveIndexSymbol::NON_INDEX);
+
+  if (parser.parseGreater())
+    return {};
+
+  return get(context, kind,
+             kind == WaveIndexSymbol::NON_INDEX ? name : StringRef());
+}
+
+void WaveIndexSymbolAttr::print(AsmPrinter &printer) const {
+  printer << "<";
+
+  switch (getKind()) {
+  case wave::WaveIndexSymbol::DEVICE_DIM_0: {
+    printer << "$D0";
+    break;
+  }
+  case wave::WaveIndexSymbol::DEVICE_DIM_1: {
+    printer << "$D1";
+    break;
+  }
+  case wave::WaveIndexSymbol::DEVICE_DIM_2: {
+    printer << "$D2";
+    break;
+  }
+  case wave::WaveIndexSymbol::WORKGROUP_0: {
+    printer << "$WG0";
+    break;
+  }
+  case wave::WaveIndexSymbol::WORKGROUP_1: {
+    printer << "$WG1";
+    break;
+  }
+  case wave::WaveIndexSymbol::WORKGROUP_2: {
+    printer << "$WG2";
+    break;
+  }
+  case wave::WaveIndexSymbol::THREAD_0: {
+    printer << "$T0";
+    break;
+  }
+  case wave::WaveIndexSymbol::THREAD_1: {
+    printer << "$T1";
+    break;
+  }
+  case wave::WaveIndexSymbol::THREAD_2: {
+    printer << "$T2";
+    break;
+  }
+  case wave::WaveIndexSymbol::NON_INDEX: {
+    printer << getName();
+    break;
+  }
+  }
+
+  printer << ">";
 }
 
 //===----------------------------------------------------------------------===//
