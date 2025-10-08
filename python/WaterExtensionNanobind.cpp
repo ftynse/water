@@ -181,12 +181,12 @@ NB_MODULE(_waterDialects, m) {
       .value("Register", wave::WaveAddressSpace::Register);
 
   //===---------------------------------------------------------------------===//
-  // WaveDistributedShapeAttr
+  // WaveExprAttr
   //===---------------------------------------------------------------------===//
 
   mlir::python::nanobind_adaptors::mlir_attribute_subclass(
-      d, "WaveDistributedShapeAttr", mlirAttributeIsAWaveDistributedShapeAttr,
-      mlirWaveDistributedShapeAttrGetTypeID)
+      d, "WaveExprAttr", mlirAttributeIsAWaveExprAttr,
+      mlirWaveExprAttrGetTypeID)
       .def_classmethod(
           "get",
           [](const nb::object &cls, const std::vector<std::string> &symbolNames,
@@ -210,9 +210,8 @@ NB_MODULE(_waterDialects, m) {
             if (mlirAffineMapGetNumDims(map) != 0) {
               throw nb::value_error("Maps should not involve dimensions.");
             }
-            return cls(
-                mlirWaveDistributedShapeAttrGet(symbolAttrs.data(), map));
+            return cls(mlirWaveExprAttrGet(symbolAttrs.data(), map));
           },
           nb::arg("cls"), nb::arg("symbol_names"), nb::arg("map"),
-          "Gets a wave.WaveDistributedShapeAttr from parameters.");
+          "Gets a wave.WaveExprAttr from parameters.");
 }

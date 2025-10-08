@@ -417,11 +417,14 @@ def WaveHyperparameterAttr : AttrDef<WaveDialect, "WaveHyperparameter"> {
   }];
 }
 
-def WaveDistributedShapeAttr : AttrDef<WaveDialect, "DistributedShape"> {
-  let mnemonic = "distributed_shape";
+def WaveExprAttr : AttrDef<WaveDialect, "Expr"> {
+  let mnemonic = "expr";
   let description = [{
-    Distributed (physical) tensor shape as affine expressions over named
-    Wave symbols.
+  A tuple of affine expressions over named Wave symbols.
+  This attribute is used to encode:
+    • Bounds expressions for read/write ops
+    • Distributed (physical) shapes for allocations
+
     Stores:
       - symbol_names: [WaveSymbolAttr] giving names (e.g., M, BLOCK_M, BLOCK_K)
       The i-th name maps to the s<i> in the affine expressions
@@ -429,7 +432,7 @@ def WaveDistributedShapeAttr : AttrDef<WaveDialect, "DistributedShape"> {
       Each result expr_k defines the k-th physical dimension.
 
       Parsing/printing:
-      #wave.distributed_shape<[M, K] -> (M, K+4)>
+      #wave.expr<[M, K] -> (M, K+4)>
   }];
 
   let parameters = (ins
@@ -451,12 +454,12 @@ def WaveReadWriteBoundsAttr : AttrDef<WaveDialect, "WaveReadWriteBounds"> {
   let mnemonic = "read_write_bounds";
   let description = [{
     This attribute contains a dictionary mapping from symbolic dimension (strings)
-    to a WaveDistributedShapeAttr specifying the bounds of the read/write operations
+    to a WaveExprAttr specifying the bounds of the read/write operations
     this is attached to.
 
     Example:
     ```
-    #wave.read_write_bounds<{M = #wave.distributed_shape<[BLOCK_M] -> BLOCK_M * 2>}>
+    #wave.read_write_bounds<{M = #wave.expr<[BLOCK_M] -> BLOCK_M * 2>}>
     ```
   }];
 

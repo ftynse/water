@@ -28,7 +28,7 @@ public:
   matchAndRewrite(wave::AllocateOp op, wave::AllocateOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     wave::WaveTensorType resultType = op.getResult().getType();
-    wave::DistributedShapeAttr distributedShape = op.getDistributedShape();
+    wave::ExprAttr distributedShape = op.getDistributedShape();
     auto *typeConverter =
         static_cast<const wave::WaveTypeConverter *>(getTypeConverter());
     Type convertedResultType = typeConverter->convertTensorFromComponents(

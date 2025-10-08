@@ -95,11 +95,11 @@ try:
         else:
             assert False, "Expected to fail with TypeError."
 
-        # CHECK: #wave.distributed_shape<[$WG0, BLOCK_M, $T0] -> ($WG0 * 3)>
-        print(wave.WaveDistributedShapeAttr.get(symbol_names, start_map))
+        # CHECK: #wave.expr<[$WG0, BLOCK_M, $T0] -> ($WG0 * 3)>
+        print(wave.WaveExprAttr.get(symbol_names, start_map))
 
         try:
-            wave.WaveDistributedShapeAttr.get(symbol_names[:-1], start_map)
+            wave.WaveExprAttr.get(symbol_names[:-1], start_map)
         except ValueError as e:
             assert "as many entries as map have symbols" in str(e)
         else:
