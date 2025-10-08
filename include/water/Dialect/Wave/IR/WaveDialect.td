@@ -54,6 +54,10 @@ def WaveDialect : Dialect {
     const static constexpr ::llvm::StringLiteral kElementsPerThreadAttrName =
         "wave.elements_per_thread";
 
+    // Name of the attribute specifying the wave constraints.
+    const static constexpr ::llvm::StringLiteral kWaveConstraintsAttrName =
+        "wave.constraints";
+
     // Registration functions. The bodies of these must be placed in the file
     // containing private implementations of attributes and types, respectively.
     void registerAttributes();
