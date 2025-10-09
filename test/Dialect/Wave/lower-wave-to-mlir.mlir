@@ -212,7 +212,6 @@ module attributes {wave.normal_form = #wave.normal_form<full_types,memory_only_t
 // CHECK-LABEL: @lower_read_non_innermost_dim
 func.func @lower_read_non_innermost_dim(%mem: !wave.tensor<[@M, @N] of f16, <global>>) attributes {wave.hyperparameters = #wave.hyperparameters<{BLOCK_M = 64, BLOCK_N = 64, M = 128, N = 128}>}  {
   %0 = wave.read %mem index {
-
     // CHECK: %[[BIDX_X:.*]] = gpu.block_id x
     // CHECK: %[[TIDX_X:.*]] = gpu.thread_id x
     // Note: BLOCK_M = 64
@@ -281,8 +280,8 @@ module attributes {wave.normal_form = #wave.normal_form<full_types,memory_only_t
         M : [BLOCK_M, WG0, T0] -> (WG0 * BLOCK_M + T0, 8, 64),
         N : [WG1, T1, BLOCK_N] -> (WG1 * BLOCK_N + T1 * 32, 1, 1)
       } { bounds = #wave.read_write_bounds<{
-        M = #wave.distributed_shape<[M] -> (M)>,
-        N = #wave.distributed_shape<[N] -> (N)>}>}
+        M = #wave.expr<[M] -> (M)>,
+        N = #wave.expr<[N] -> (N)>}>}
       : (!wave.tensor<[@M, @N] of f16, <global>>) -> vector<8xf16>
       // CHECK: %[[MASK:.+]] = arith.andi {{.*}}, {{.*}}
       // CHECK: %[[PAD:.*]] = arith.constant {{.*}} : f16

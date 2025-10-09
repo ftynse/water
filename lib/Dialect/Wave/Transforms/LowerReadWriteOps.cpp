@@ -33,23 +33,21 @@ struct TransferOpCommonAttrs {
 /// Build the common attrs for vector.transfer_{read,write} when vectorizing a
 /// memref dimension.
 static TransferOpCommonAttrs
-make1DTransferCommonAttrs(Value mem, uint64_t vectorizedDim, VectorType vecType,
-                          PatternRewriter &rewriter) {
+make1DTransferCommonAttrs(MemRefType memrefType, int64_t vectorizedDim,
+                          VectorType vecType, PatternRewriter &rewriter) {
 
-  auto memrefType = cast<MemRefType>(mem.getType());
   uint64_t memrefRank = memrefType.getRank();
   MLIRContext *ctx = rewriter.getContext();
+
+  assert(vecType.getRank() == 1 && "only 1-D vectors supported here");
 
   // Permutation map: (d0,..,d{rank-1}) -> (d_{vectorizedDim})
   AffineExpr e = getAffineDimExpr(vectorizedDim, ctx);
   AffineMap map = AffineMap::get(memrefRank, /*numSymbols=*/0, e, ctx);
   AffineMapAttr permAttr = AffineMapAttr::get(map);
 
-  // in_bounds length must equal the *vector rank* (usually 1).
-  SmallVector<bool, 1> flagsTrue(vecType.getRank(), true);
-  SmallVector<bool, 1> flagsFalse(vecType.getRank(), false);
-  ArrayAttr inTrue = rewriter.getBoolArrayAttr(flagsTrue);
-  ArrayAttr inFalse = rewriter.getBoolArrayAttr(flagsFalse);
+  ArrayAttr inTrue = rewriter.getBoolArrayAttr({true});
+  ArrayAttr inFalse = rewriter.getBoolArrayAttr({false});
 
   return TransferOpCommonAttrs{permAttr, inTrue, inFalse};
 }
@@ -214,18 +212,19 @@ buildMask(Location loc, wave::WaveReadWriteBoundsAttr boundsDict,
 /// Checks whether the vectorized dimension is the innermost dimension and if
 /// its stride is 1. This is required to use vector.load/store or
 /// masked_load/store.
-static FailureOr<bool> isMinorContiguous(Value mem, uint64_t vectorizedDim) {
-  auto memrefType = cast<MemRefType>(mem.getType());
+static FailureOr<bool> isMinorContiguous(MemRefType memrefType,
+                                         int64_t vectorizedDim) {
   int64_t memrefRank = memrefType.getRank();
 
   // Must be vectorizing the innermost dimension.
-  if (vectorizedDim != static_cast<uint64_t>(memrefRank - 1))
+  if (vectorizedDim != static_cast<int64_t>(memrefRank - 1))
     return false;
 
   int64_t offset = 0;
-  SmallVector<int64_t, 4> strides;
+  SmallVector<int64_t> strides;
   if (failed(memrefType.getStridesAndOffset(strides, offset))) {
-    LLVM_DEBUG(llvm::dbgs() << "Non-strided memref layout; \n");
+    LLVM_DEBUG(llvm::dbgs()
+               << "Non-strided memref layout; using transfer ops\n \n");
     return failure(); // layout not representable as simple strided
   }
 
@@ -240,7 +239,8 @@ static FailureOr<bool> isMinorContiguous(Value mem, uint64_t vectorizedDim) {
 /// - If vectorizing the innermost dimension with unit stride (contiguous), emit
 /// `vector.load` or `vector.maskedload`
 /// - Otherwise (non-innermost or non-contiguous innermost), emit
-/// `vector.transfer_read`. `in_bounds` semantics for transfer ops:
+/// `vector.transfer_read`.
+///`in_bounds` semantics for transfer ops:
 /// - if set to `[true]`  we believe the indices passed through are safe (i.e.
 /// within bounds); the compiler may
 ///   elide bounds checks.
@@ -259,8 +259,9 @@ static Value buildVectorRead(Location loc, PatternRewriter &rewriter, Value mem,
   else
     assert(false && "unsupported element type");
 
-  FailureOr<bool> isMinorContig = isMinorContiguous(mem, vectorizedDim);
-  bool usePlainVectorRead = succeeded(isMinorContig) && *isMinorContig;
+  auto memrefType = cast<MemRefType>(mem.getType());
+  FailureOr<bool> isMinorContig = isMinorContiguous(memrefType, vectorizedDim);
+  bool usePlainVectorRead = isMinorContig.value_or(false);
 
   // vector.load or vector.masked_load
   if (usePlainVectorRead) {
@@ -277,8 +278,9 @@ static Value buildVectorRead(Location loc, PatternRewriter &rewriter, Value mem,
 
   // vector.transfer_read (masked or unmasked)
   TransferOpCommonAttrs common =
-      make1DTransferCommonAttrs(mem, vectorizedDim, vecType, rewriter);
-  // Padding used to fill in vector lanes that are out of bounds or masked off
+      make1DTransferCommonAttrs(memrefType, vectorizedDim, vecType, rewriter);
+  // Padding value used by vector.transfer_read to fill lanes that are
+  // out-of-bounds or masked-off.
   Value padding = rewriter.create<arith::ConstantOp>(loc, eltType, zeroElement);
 
   if (!mask) {
@@ -297,7 +299,8 @@ static Value buildVectorRead(Location loc, PatternRewriter &rewriter, Value mem,
 /// - If vectorizing the innermost dimension with unit stride (contiguous), emit
 /// `vector.store` or `vector.maskedstore`
 /// - Otherwise (non-innermost or non-contiguous innermost), emit
-/// `vector.transfer_write`. `in_bounds` semantics for transfer ops:
+/// `vector.transfer_write`.
+/// `in_bounds` semantics for transfer ops:
 /// - if set to `[true]` we believe the indices passed through are safe (i.e.
 /// within bounds); the compiler may
 ///   elide bounds checks.
@@ -307,7 +310,8 @@ static void buildVectorWrite(Location loc, PatternRewriter &rewriter, Value mem,
                              ArrayRef<Value> indices, Value vecValue,
                              Value mask, uint64_t vectorizedDim) {
 
-  FailureOr<bool> isMinorContig = isMinorContiguous(mem, vectorizedDim);
+  auto memrefType = cast<MemRefType>(mem.getType());
+  FailureOr<bool> isMinorContig = isMinorContiguous(memrefType, vectorizedDim);
   bool usePlainVectorStore = succeeded(isMinorContig) && *isMinorContig;
 
   // vector.store or vector.masked_store
@@ -322,7 +326,7 @@ static void buildVectorWrite(Location loc, PatternRewriter &rewriter, Value mem,
   // vector.transfer_write (masked or unmasked)
   auto vecType = cast<VectorType>(vecValue.getType());
   TransferOpCommonAttrs common =
-      make1DTransferCommonAttrs(mem, vectorizedDim, vecType, rewriter);
+      make1DTransferCommonAttrs(memrefType, vectorizedDim, vecType, rewriter);
 
   if (mask) {
     rewriter.create<vector::TransferWriteOp>(loc, vecValue, mem, indices,
@@ -337,14 +341,23 @@ static void buildVectorWrite(Location loc, PatternRewriter &rewriter, Value mem,
   }
 }
 
+/// Describes access info used when lowering Wave ops to vector read/write ops.
+/// - startIndices: base element indices into the memref (size == memref rank).
+/// - mask: vector<i1> guarding per-lane accesses (length == elementsPerThread).
+/// - vectorizedDim: memref dimension spanned by the vector elements
+struct MemAccessInfo {
+  SmallVector<Value> startIndices;
+  Value mask;
+  int64_t vectorizedDim;
+};
+
 // Common lowering for memory operations such as read/write. Checks whether
 // enough information is present on the operation and constructs the starting
 // index (populates the trailing vector argument) and eventually the mask.
 template <typename OpTy>
-static FailureOr<Value> createMemoryIndicesAndMask(
+static FailureOr<MemAccessInfo> createMemoryIndicesAndMask(
     ConversionPatternRewriter &rewriter, const TypeConverter *typeConverter,
-    OpTy op, wave::WaveTensorType memoryType, VectorType vectorType,
-    SmallVectorImpl<Value> &startIndices, uint64_t &vectorizedDimOut) {
+    OpTy op, wave::WaveTensorType memoryType, VectorType vectorType) {
 
   int64_t elementsPerThread = vectorType.getNumElements();
 
@@ -362,21 +375,19 @@ static FailureOr<Value> createMemoryIndicesAndMask(
   if (!indexDict)
     return rewriter.notifyMatchFailure(
         op, "cannot lower without 'index' attribute");
-  std::optional<uint64_t> vectorizedDim =
+  std::optional<int64_t> vectorizedDim =
       wave::getPositionOfVectorizedDim(orderedSyms, indexDict, hyper);
 
   if (!vectorizedDim.has_value()) {
     return rewriter.notifyMatchFailure(
         op, "failed to identify vectorized dimension");
   }
-  vectorizedDimOut = *vectorizedDim;
-
   FailureOr<SmallVector<Value>> maybeStartIndices =
       buildStartIndices(op->getLoc(), indexDict, orderedSyms, rewriter, hyper);
   if (failed(maybeStartIndices))
     return rewriter.notifyMatchFailure(
         op, "failed to convert start indices to affine");
-  startIndices = std::move(*maybeStartIndices);
+  SmallVector<Value> startIndices = std::move(*maybeStartIndices);
 
   FailureOr<Value> mask =
       buildMask(op->getLoc(), boundsDict, orderedSyms, rewriter, indexDict,
@@ -384,7 +395,7 @@ static FailureOr<Value> createMemoryIndicesAndMask(
   if (failed(mask))
     return rewriter.notifyMatchFailure(op, "couldn't build the required mask");
 
-  return mask;
+  return MemAccessInfo{startIndices, *mask, *vectorizedDim};
 }
 
 class ReadOpLoweringPattern : public OpConversionPattern<wave::ReadOp> {
@@ -400,17 +411,14 @@ public:
       return rewriter.notifyMatchFailure(op,
                                          "WaveTensorType conversion failed");
     auto vectorType = cast<VectorType>(convertedType);
-    SmallVector<Value> startIndices;
-    uint64_t vectorizedDim = 0; // value will be overwritten on success
-    FailureOr<Value> mask = createMemoryIndicesAndMask(
-        rewriter, getTypeConverter(), op, op.getMemory().getType(), vectorType,
-        startIndices, vectorizedDim);
-    if (failed(mask))
+    FailureOr<MemAccessInfo> memInfo = createMemoryIndicesAndMask(
+        rewriter, getTypeConverter(), op, op.getMemory().getType(), vectorType);
+    if (failed(memInfo))
       return failure();
 
-    Value readOp =
-        buildVectorRead(op.getLoc(), rewriter, adaptor.getMemory(),
-                        startIndices, vectorType, *mask, vectorizedDim);
+    Value readOp = buildVectorRead(op.getLoc(), rewriter, adaptor.getMemory(),
+                                   memInfo->startIndices, vectorType,
+                                   memInfo->mask, memInfo->vectorizedDim);
     rewriter.replaceOp(op, readOp);
     return success();
   }
@@ -425,17 +433,15 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     Value vec = adaptor.getValueToStore();
     auto vecType = cast<VectorType>(vec.getType());
-    SmallVector<Value> startIndices;
-    uint64_t vectorizedDim = 0; // value will be overwritten on success
 
-    FailureOr<Value> mask = createMemoryIndicesAndMask(
-        rewriter, getTypeConverter(), op, op.getMemory().getType(), vecType,
-        startIndices, vectorizedDim);
-    if (failed(mask))
+    FailureOr<MemAccessInfo> memInfo = createMemoryIndicesAndMask(
+        rewriter, getTypeConverter(), op, op.getMemory().getType(), vecType);
+    if (failed(memInfo))
       return failure();
 
-    buildVectorWrite(op.getLoc(), rewriter, adaptor.getMemory(), startIndices,
-                     vec, *mask, vectorizedDim);
+    buildVectorWrite(op.getLoc(), rewriter, adaptor.getMemory(),
+                     memInfo->startIndices, vec, memInfo->mask,
+                     memInfo->vectorizedDim);
     rewriter.eraseOp(op);
     return success();
   }
