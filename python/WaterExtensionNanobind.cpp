@@ -214,4 +214,56 @@ NB_MODULE(_waterDialects, m) {
           },
           nb::arg("cls"), nb::arg("symbol_names"), nb::arg("map"),
           "Gets a wave.WaveExprAttr from parameters.");
+
+  //===---------------------------------------------------------------------===//
+  // WaveReadWriteBoundsAttr
+  //===---------------------------------------------------------------------===//
+
+  mlir::python::nanobind_adaptors::mlir_attribute_subclass(
+      d, "WaveReadWriteBoundsAttr", mlirAttributeIsAWaveReadWriteBoundsAttr,
+      mlirWaveReadWriteBoundsAttrGetTypeID)
+      .def_classmethod(
+          "get",
+          [](const nb::object &cls, const nb::dict &symDimDict,
+             // MlirContext should always come last to allow for being
+             // automatically deduced from context.
+             MlirContext context) {
+            std::vector<MlirNamedAttribute> namedAttrs;
+            namedAttrs.reserve(symDimDict.size());
+
+            for (auto [key, value] : symDimDict) {
+              // Get the key (symbolic dimension)
+              nb::handle key_handle = key;
+              if (!nb::isinstance<nb::str>(key_handle)) {
+                throw nb::type_error(
+                    "Symbolic dimension dictionary key must be a string");
+              }
+              std::string symbolicDim = nb::cast<std::string>(key_handle);
+
+              // Get the value (bound expression)
+              MlirAttribute attr;
+              try {
+                attr = nb::cast<MlirAttribute>(value);
+              } catch (const nb::cast_error &e) {
+                throw nb::type_error(
+                    "Symbolic dimension dictionary value must be an attribute");
+              }
+              if (!mlirAttributeIsAWaveExprAttr(attr)) {
+                throw nb::type_error("Symbolic dimension dictionary value must "
+                                     "be a WaveExprAttr");
+              }
+
+              namedAttrs.push_back(mlirNamedAttributeGet(
+                  mlirIdentifierGet(context,
+                                    mlirStringRefCreate(symbolicDim.data(),
+                                                        symbolicDim.size())),
+                  attr));
+            }
+
+            return cls(mlirWaveReadWriteBoundsAttrGet(mlirDictionaryAttrGet(
+                context, namedAttrs.size(), namedAttrs.data())));
+          },
+          nb::arg("cls"), nb::arg("sym_dim_dict"),
+          nb::arg("context") = nb::none(),
+          "Gets a wave.WaveReadWriteBoundsAttr from parameters.");
 }

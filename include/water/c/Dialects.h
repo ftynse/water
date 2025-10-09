@@ -102,6 +102,22 @@ MLIR_CAPI_EXPORTED MlirAttribute mlirWaveExprAttrGet(MlirAttribute *symbolNames,
 /// Returns the typeID of a WaveExprAttr.
 MLIR_CAPI_EXPORTED MlirTypeID mlirWaveExprAttrGetTypeID();
 
+//===---------------------------------------------------------------------===//
+// WaveReadWriteBoundsAttr
+//===---------------------------------------------------------------------===//
+
+/// Checks whether the given MLIR attribute is a WaveReadWriteBoundsAttr.
+MLIR_CAPI_EXPORTED bool
+mlirAttributeIsAWaveReadWriteBoundsAttr(MlirAttribute attr);
+
+/// Creates a new WaveReadWriteBoundsAttr with the given mapping from symbolic
+/// dimensions to their bound expressions.
+MLIR_CAPI_EXPORTED MlirAttribute
+mlirWaveReadWriteBoundsAttrGet(MlirAttribute mapping);
+
+/// Returns the typeID of a WaveReadWriteBoundsAttr.
+MLIR_CAPI_EXPORTED MlirTypeID mlirWaveReadWriteBoundsAttrGetTypeID();
+
 #ifdef __cplusplus
 }
 #endif
