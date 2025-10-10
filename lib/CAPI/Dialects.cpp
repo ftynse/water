@@ -143,3 +143,29 @@ MlirAttribute mlirWaveExprAttrGet(MlirAttribute *symbolNames,
 MlirTypeID mlirWaveExprAttrGetTypeID() {
   return wrap(mlir::TypeID::get<wave::ExprAttr>());
 }
+
+//===---------------------------------------------------------------------===//
+// WaveReadWriteBoundsAttr
+//===---------------------------------------------------------------------===//
+
+bool mlirAttributeIsAWaveReadWriteBoundsAttr(MlirAttribute attr) {
+  return llvm::isa<wave::WaveReadWriteBoundsAttr>(unwrap(attr));
+}
+
+MlirAttribute mlirWaveReadWriteBoundsAttrGet(MlirAttribute mapping) {
+  auto dictAttr = llvm::cast<mlir::DictionaryAttr>(unwrap(mapping));
+
+  mlir::MLIRContext *ctx = dictAttr.getContext();
+
+  assert(llvm::all_of(dictAttr,
+                      [](const mlir::NamedAttribute &namedAttr) {
+                        return llvm::isa<wave::ExprAttr>(namedAttr.getValue());
+                      }) &&
+         "expected mapping to contain only WaveExprAttr values");
+
+  return wrap(wave::WaveReadWriteBoundsAttr::get(ctx, dictAttr));
+}
+
+MlirTypeID mlirWaveReadWriteBoundsAttrGetTypeID() {
+  return wrap(mlir::TypeID::get<wave::WaveReadWriteBoundsAttr>());
+}
