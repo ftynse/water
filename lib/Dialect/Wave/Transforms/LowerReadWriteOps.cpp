@@ -76,17 +76,17 @@ materializeAffine(Location loc, ArrayRef<wave::WaveSymbolAttr> symbols,
     StringRef name = symbols[i].getName();
 
     Value v;
-    if (name == "T0")
+    if (name == "_T0")
       v = threadId(gpu::Dimension::x);
-    else if (name == "T1")
+    else if (name == "_T1")
       v = threadId(gpu::Dimension::y);
-    else if (name == "T2")
+    else if (name == "_T2")
       v = threadId(gpu::Dimension::z);
-    else if (name == "WG0")
+    else if (name == "_WG0")
       v = blockId(gpu::Dimension::x);
-    else if (name == "WG1")
+    else if (name == "_WG1")
       v = blockId(gpu::Dimension::y);
-    else if (name == "WG2")
+    else if (name == "_WG2")
       v = blockId(gpu::Dimension::z);
     else if (std::optional<int64_t> value = hyper.getSymbolValue(name)) {
       v = rewriter.create<arith::ConstantIndexOp>(loc, *value);

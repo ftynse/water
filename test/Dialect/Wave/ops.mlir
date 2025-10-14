@@ -92,8 +92,8 @@ func.func @register_with_symbols_complex_index() {
   %register = wave.register %0
     index {
       B : [WG2, BLOCK_B] -> (WG2 * (BLOCK_B+BLOCK_B), BLOCK_B * (WG2+WG2), WG2 * BLOCK_B),
-      M : [WG0, BLOCK_M, T0] -> (WG0 * BLOCK_M + BLOCK_M * ((T0 floordiv 64) floordiv 2) + T0 mod 32, 1, 1),
-      N : [T1, BLOCK_N, WG1, GPR_NUM, T0] -> (T1 * (BLOCK_N floordiv 2) + BLOCK_N * WG1 + GPR_NUM mod 4 + ((GPR_NUM floordiv 4) mod 4) * 8 + ((T0 mod 64) floordiv 32) * 4, 1, 1)
+      M : [_WG0, BLOCK_M, _T0] -> (_WG0 * BLOCK_M + BLOCK_M * ((_T0 floordiv 64) floordiv 2) + _T0 mod 32, 1, 1),
+      N : [_T1, BLOCK_N, _WG1, GPR_NUM, _T0] -> (_T1 * (BLOCK_N floordiv 2) + BLOCK_N * _WG1 + GPR_NUM mod 4 + ((GPR_NUM floordiv 4) mod 4) * 8 + ((_T0 mod 64) floordiv 32) * 4, 1, 1)
     }
     : !wave.tensor<[@B, @N, @M] of f32, <register>>
   return
@@ -136,11 +136,11 @@ func.func @index_magic_symbols(%mem: !wave.tensor<[@M] of f16, <global>>)
 attributes {wave.hyperparameters = #wave.hyperparameters<{BLOCK_M = 32, BLOCK_N = 32, M = 128, N = 256}>}  {
   // CHECK: wave.read
   // CHECK: index
-  // CHECK: WG0
-  // CHECK: T0
+  // CHECK: _WG0
+  // CHECK: _T0
   %0 = wave.read %mem index {
-      M : [BLOCK_M, WG0, T0] -> (BLOCK_M * WG0 + (BLOCK_M floordiv 2) * (T0 floordiv 64) + T0 mod 64, 1, 64),
-      N : [T1, WG1, BLOCK_N] -> (WG1 * BLOCK_N + (BLOCK_N floordiv 2) * T1, BLOCK_N ceildiv 2, 1)}
+      M : [BLOCK_M, _WG0, _T0] -> (BLOCK_M * _WG0 + (BLOCK_M floordiv 2) * (_T0 floordiv 64) + _T0 mod 64, 1, 64),
+      N : [_T1, _WG1, BLOCK_N] -> (_WG1 * BLOCK_N + (BLOCK_N floordiv 2) * _T1, BLOCK_N ceildiv 2, 1)}
     : (!wave.tensor<[@M] of f16, <global>>) -> !wave.tensor<[@M] of f16, <register>>
   return
 }
