@@ -115,7 +115,7 @@ static llvm::LogicalResult verifyAttributeHyperparamUses(
 
   // TODO: somehow get rid of these hardcoded magic names.
   static llvm::SmallVector<llvm::StringRef> fixmeMagicNames = {
-      "T0", "T1", "T2", "WG0", "WG1", "WG2"};
+      "_T0", "_T1", "_T2", "_WG0", "_WG1", "_WG2"};
 
   mlir::WalkResult walkResult =
       namedAttr.getValue().walk([&](wave::WaveSymbolAttr symbolAttr) {
