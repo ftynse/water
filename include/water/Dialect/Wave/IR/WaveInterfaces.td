@@ -143,4 +143,20 @@ def CompatibleOperandsAndResultsIgnoreSpaceOpTrait
   let cppNamespace = "::wave";
 }
 
+//-----------------------------------------------------------------------------
+// WaveSymbolAttrInterface and implementation traits
+//-----------------------------------------------------------------------------
+
+def WaveSymbolAttrInterface : AttrInterface<"WaveSymbolAttrInterface"> {
+  let description = [{
+    TODO
+  }];
+  let cppNamespace = "::wave";
+
+  let methods = [
+    InterfaceMethod<"TODO", "::llvm::StringRef", "getIdentifier">
+  ];
+}
+
+
 #endif // WATER_DIALECT_WAVE_WAVEINTERFACES

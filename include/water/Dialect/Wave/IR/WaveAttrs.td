@@ -8,6 +8,7 @@
 #define WATER_DIALECT_WAVE_WAVEATTRS
 
 include "water/Dialect/Wave/IR/WaveDialect.td"
+include "water/Dialect/Wave/IR/WaveInterfaces.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
 include "mlir/IR/BuiltinAttributeInterfaces.td"
@@ -293,7 +294,29 @@ def DeviceConstraintAttr : AttrDef<WaveDialect, "DeviceConstraint"> {
 // Other attributes
 //-----------------------------------------------------------------------------
 
-def WaveSymbolAttr : AttrDef<WaveDialect, "WaveSymbol"> {
+def WaveIndexSymbolEnum : I32EnumAttr<"WaveIndexSymbol", "Index symbol", [
+  I32EnumAttrCase<"DEVICE_DIM_0", 0, "DD0">,
+  I32EnumAttrCase<"DEVICE_DIM_1", 1, "DD1">,
+  I32EnumAttrCase<"DEVICE_DIM_2", 2, "DD2">,
+  I32EnumAttrCase<"WORKGROUP_0", 3, "WG0">,
+  I32EnumAttrCase<"WORKGROUP_1", 4, "WG1">,
+  I32EnumAttrCase<"WORKGROUP_2", 5, "WG2">,
+  I32EnumAttrCase<"THREAD_0", 6, "T0">,
+  I32EnumAttrCase<"THREAD_1", 7, "T1">,
+  I32EnumAttrCase<"THREAD_2", 8, "T2">,
+  I32EnumAttrCase<"GPR_NUMBER", 9, "GPR_NUM">,
+  I32EnumAttrCase<"NON_INDEX", 10, "NON_IDX">,
+]> {
+  let cppNamespace = "::wave";
+  let genSpecializedAttr = 0;
+}
+
+def WaveIndexSymbolAttr
+    : EnumAttr<WaveDialect, WaveIndexSymbolEnum, "index_symbol"> {
+  let assemblyFormat = "`<` $value `>`";
+}
+
+def WaveSymbolAttr : AttrDef<WaveDialect, "WaveSymbol", [DeclareAttrInterfaceMethods<WaveSymbolAttrInterface, ["getIdentifier"]>]> {
   let mnemonic = "symbol";
   let description = [{
     Base symbol used in symbolic expressions in the Wave dialect. This is

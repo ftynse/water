@@ -10,6 +10,8 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 
+#include "water/Dialect/Wave/IR/WaveInterfaces.h"
+
 #include "water/Dialect/Wave/IR/WaveEnums.h.inc"
 #define GET_ATTRDEF_CLASSES
 #include "water/Dialect/Wave/IR/WaveAttrs.h.inc"

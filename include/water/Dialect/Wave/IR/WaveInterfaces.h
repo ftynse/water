@@ -383,6 +383,7 @@ class NoOpElementsPerThreadOpTrait
 
 } // namespace wave
 
+#include "water/Dialect/Wave/IR/WaveAttrInterfaces.h.inc"
 #include "water/Dialect/Wave/IR/WaveOpInterfaces.h.inc"
 
 #endif // WATER_DIALECT_WAVE_IR_WAVEINTERFACES_H
