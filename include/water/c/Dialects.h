@@ -23,8 +23,8 @@ MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(Wave, wave);
 MLIR_CAPI_EXPORTED bool mlirAttributeIsAWaveSymbolAttr(MlirAttribute attr);
 
 /// Creates a new WaveSymbolAttr with the given symbol name.
-MLIR_CAPI_EXPORTED MlirAttribute
-mlirWaveSymbolAttrGet(MlirContext mlirCtx, MlirStringRef symbolName);
+MLIR_CAPI_EXPORTED MlirAttribute mlirWaveSymbolAttrGet(
+    MlirContext mlirCtx, unsigned kind, MlirStringRef symbolName);
 
 /// Returns the typeID of a WaveSymbolAttr.
 MLIR_CAPI_EXPORTED MlirTypeID mlirWaveSymbolAttrGetTypeID();
