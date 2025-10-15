@@ -39,15 +39,17 @@ NB_MODULE(_waterDialects, m) {
       mlirWaveSymbolAttrGetTypeID)
       .def_classmethod(
           "get",
-          [](const nb::object &cls, const std::string &symbolName,
+          [](const nb::object &cls, wave::WaveIndexSymbol kind,
+             const std::string &symbolName,
              // MlirContext should always come last to allow for being
              // automatically deduced from context.
              MlirContext context) {
             MlirStringRef symbolNameStrRef =
                 mlirStringRefCreate(symbolName.data(), symbolName.size());
-            return cls(mlirWaveSymbolAttrGet(context, symbolNameStrRef));
+            return cls(mlirWaveSymbolAttrGet(
+                context, static_cast<uint32_t>(kind), symbolNameStrRef));
           },
-          nb::arg("cls"), nb::arg("symbolName"),
+          nb::arg("cls"), nb::arg("kind"), nb::arg("symbolName"),
           nb::arg("context") = nb::none(),
           "Gets a wave.WaveSymbolAttr from parameters.");
 

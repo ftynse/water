@@ -28,11 +28,10 @@ parseTensorShape(mlir::AsmParser &parser,
 
   fullySpecified = true;
   auto parseOne = [&]() -> mlir::ParseResult {
-    mlir::StringAttr stringAttr;
-    if (parser.parseSymbolName(stringAttr).failed())
-      return mlir::failure();
-    attr.emplace_back(wave::WaveSymbolAttr::get(stringAttr.getContext(),
-                                                stringAttr.getValue()));
+    wave::WaveSymbolAttr symbolAttr;
+    if (parser.parseCustomAttributeWithFallback(symbolAttr))
+      return {};
+    attr.emplace_back(symbolAttr);
     return mlir::success();
   };
 
@@ -48,9 +47,7 @@ static void printTensorShape(mlir::AsmPrinter &printer,
     return;
   }
 
-  auto printOne = [&](wave::WaveSymbolAttr attr) {
-    attr.printAsSymbolRef(printer.getStream());
-  };
+  auto printOne = [&](wave::WaveSymbolAttr attr) { attr.print(printer); };
 
   printer.getStream() << "[";
   llvm::interleaveComma(shape, printer.getStream(), printOne);

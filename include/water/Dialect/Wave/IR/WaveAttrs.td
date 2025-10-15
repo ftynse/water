@@ -293,7 +293,26 @@ def DeviceConstraintAttr : AttrDef<WaveDialect, "DeviceConstraint"> {
 // Other attributes
 //-----------------------------------------------------------------------------
 
-def WaveSymbolAttr : AttrDef<WaveDialect, "WaveSymbol"> {
+def WaveIndexSymbolEnum
+    : I32EnumAttr<"WaveIndexSymbol", "Index symbol", [
+  I32EnumAttrCase<"DEVICE_DIM_0", 0, "DD0">,
+  I32EnumAttrCase<"DEVICE_DIM_1", 1, "DD1">,
+  I32EnumAttrCase<"DEVICE_DIM_2", 2, "DD2">,
+  I32EnumAttrCase<"WORKGROUP_0", 3, "WG0">,
+  I32EnumAttrCase<"WORKGROUP_1", 4, "WG1">,
+  I32EnumAttrCase<"WORKGROUP_2", 5, "WG2">,
+  I32EnumAttrCase<"THREAD_0", 6, "T0">,
+  I32EnumAttrCase<"THREAD_1", 7, "T1">,
+  I32EnumAttrCase<"THREAD_2", 8, "T2">,
+  I32EnumAttrCase<"GPR_NUMBER", 9, "GPR_NUM">,
+  I32EnumAttrCase<"NON_INDEX", 10, "NON_IDX">,
+]> {
+  let cppNamespace = "::wave";
+  let genSpecializedAttr = 0;
+}
+
+def WaveSymbolAttr
+    : AttrDef<WaveDialect, "WaveSymbol"> {
   let mnemonic = "symbol";
   let description = [{
     Base symbol used in symbolic expressions in the Wave dialect. This is
@@ -303,12 +322,14 @@ def WaveSymbolAttr : AttrDef<WaveDialect, "WaveSymbol"> {
     programs. Wave expression symbols are not part of the symbol table.
   }];
 
-  let parameters = (ins StringRefParameter<"name of the symbol">:$name);
-  let assemblyFormat = "`<` $name `>`";
+  let parameters = (ins EnumParameter<WaveIndexSymbolEnum>:$kind,
+                        StringRefParameter<"name of the symbol">:$name);
+
+  let hasCustomAssemblyFormat = 1;
 
   let extraClassDeclaration = [{
-    void printAsSymbolRef(::llvm::raw_ostream &os) const {
-      os << "@" << getName();
+    bool isIndexSymbol() const {
+      return getKind() != ::wave::WaveIndexSymbol::NON_INDEX;
     }
   }];
 }
@@ -320,7 +341,7 @@ def WaveExpressionAttr : AttrDef<WaveDialect, "WaveExpression"> {
     Base symbolic expression used in the Wave dialect.
   }];
 
-  let parameters = (ins ArrayRefParameter<"WaveSymbolAttr">:$symbol_names,
+  let parameters = (ins ArrayRefParameter<"WaveSymbolAttr">:$symbols,
                     "::mlir::AffineMap":$map);
 
   let hasCustomAssemblyFormat = 1;
@@ -328,15 +349,15 @@ def WaveExpressionAttr : AttrDef<WaveDialect, "WaveExpression"> {
   let extraClassDeclaration = [{
     /// Get the symbol name at the given index.
     ::llvm::StringRef getSymbolName(unsigned index) const {
-      auto names = getSymbolNames();
-      if (index >= names.size()) return ::llvm::StringRef();
-        return names[index].getName();
+      auto symbols = getSymbols();
+      if (index >= symbols.size()) return ::llvm::StringRef();
+        return symbols[index].getName();
     }
 
     /// Get all symbol names as a vector of string references.
     ::llvm::SmallVector<::llvm::StringRef> getAllSymbolNames() const {
-      auto names = getSymbolNames();
-      return ::llvm::map_to_vector(names, [](::wave::WaveSymbolAttr attr) {
+      auto symbols = getSymbols();
+      return ::llvm::map_to_vector(symbols, [](::wave::WaveSymbolAttr attr) {
         return attr.getName();
       });
     }
@@ -351,15 +372,15 @@ def WaveIndexMappingAttr : AttrDef<WaveDialect, "WaveIndexMapping"> {
 
     This attribute preserves meaningful symbol names (e.g., WG0, BLOCK_M, T0)
     while storing affine maps internally for start, step, and stride. The
-    symbol_names array corresponds 1:1 to the symbols in the affine
-    expressions, where s0 maps to symbol_names[0], s1 to symbol_names[1], etc.
+    symbols array corresponds 1:1 to the symbols in the affine
+    expressions, where s0 maps to symbols[0], s1 to symbols[1], etc.
 
-    Custom syntax: [symbol_names] -> (start_expr, step_expr, stride_expr)
+    Custom syntax: [symbols] -> (start_expr, step_expr, stride_expr)
     Example: [WG0, BLOCK_M] -> (WG0 * BLOCK_M + 42, 1, BLOCK_M)
   }];
 
   let parameters = (ins
-    ArrayRefParameter<"WaveSymbolAttr">:$symbol_names,
+    ArrayRefParameter<"WaveSymbolAttr">:$symbols,
     "::mlir::AffineMap":$start,
     "::mlir::AffineMap":$step,
     "::mlir::AffineMap":$stride
@@ -370,17 +391,17 @@ def WaveIndexMappingAttr : AttrDef<WaveDialect, "WaveIndexMapping"> {
   let extraClassDeclaration = [{
     /// Get the symbol name at the given index.
     ::llvm::StringRef getSymbolName(unsigned index) {
-      auto names = getSymbolNames();
-      if (index >= names.size()) return ::llvm::StringRef();
-      return names[index].getName();
+      auto symbols = getSymbols();
+      if (index >= symbols.size()) return ::llvm::StringRef();
+      return symbols[index].getName();
     }
 
     /// Get all symbol names as a vector of string references.
     ::llvm::SmallVector<::llvm::StringRef> getAllSymbolNames() const {
       ::llvm::SmallVector<::llvm::StringRef> result;
-      auto names = getSymbolNames();
-      result.reserve(names.size());
-      for (auto symbolAttr : names) {
+      auto symbols = getSymbols();
+      result.reserve(symbols.size());
+      for (auto symbolAttr : symbols) {
         result.push_back(symbolAttr.getName());
       }
       return result;
@@ -426,7 +447,7 @@ def WaveExprAttr : AttrDef<WaveDialect, "Expr"> {
     • Distributed (physical) shapes for allocations
 
     Stores:
-      - symbol_names: [WaveSymbolAttr] giving names (e.g., M, BLOCK_M, BLOCK_K)
+      - symbols: [WaveSymbolAttr] giving names (e.g., M, BLOCK_M, BLOCK_K)
       The i-th name maps to the s<i> in the affine expressions
       - shape: affine_map<()[s0..sN] -> (expr_0, ..., expr_{rank-1})>
       Each result expr_k defines the k-th physical dimension.
@@ -436,7 +457,7 @@ def WaveExprAttr : AttrDef<WaveDialect, "Expr"> {
   }];
 
   let parameters = (ins
-    ArrayRefParameter<"WaveSymbolAttr">:$symbol_names,
+    ArrayRefParameter<"WaveSymbolAttr">:$symbols,
     "::mlir::AffineMap":$shape
   );
   let hasCustomAssemblyFormat = 1;
@@ -447,6 +468,17 @@ def WaveExprAttr : AttrDef<WaveDialect, "Expr"> {
 
     std::optional<llvm::SmallVector<int64_t>>
     getResolvedShape(::wave::WaveHyperparameterAttr hyper) const;
+
+    /// Get all symbol names as a vector of string references.
+    ::llvm::SmallVector<::llvm::StringRef> getAllSymbolNames() const {
+      ::llvm::SmallVector<::llvm::StringRef> result;
+      auto symbols = getSymbols();
+      result.reserve(symbols.size());
+      for (auto symbolAttr : symbols) {
+        result.push_back(symbolAttr.getName());
+      }
+      return result;
+    }
   }];
 }
 
