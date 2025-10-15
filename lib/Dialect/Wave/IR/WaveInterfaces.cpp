@@ -448,4 +448,5 @@ llvm::LogicalResult wave::detail::verifyCompatibleOperandsAndResultsOpTrait(
                          includeAddressSpace, kResultNamePrefix, os.str());
 }
 
+#include "water/Dialect/Wave/IR/WaveAttrInterfaces.cpp.inc"
 #include "water/Dialect/Wave/IR/WaveOpInterfaces.cpp.inc"
