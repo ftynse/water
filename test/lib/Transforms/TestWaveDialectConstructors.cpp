@@ -32,13 +32,14 @@ static llvm::LogicalResult testCreateTensor(mlir::Operation *op) {
 
   llvm::SmallVector<wave::WaveSymbolAttr> shapeComponents;
   for (mlir::Attribute a : shapeAttr.getValue()) {
-    if (auto symbol = llvm::dyn_cast<mlir::FlatSymbolRefAttr>(a)) {
-      shapeComponents.emplace_back(
-          wave::WaveSymbolAttr::get(op->getContext(), symbol.getValue()));
+    if (auto symbol = llvm::dyn_cast<wave::WaveSymbolAttr>(a)) {
+      shapeComponents.emplace_back(wave::WaveSymbolAttr::get(
+          op->getContext(), wave::WaveIndexSymbol::NON_INDEX,
+          symbol.getName()));
       continue;
     }
     return op->emitOpError() << "expected elements of the \"" << kShape
-                             << "\" attribute to be flat symbol references";
+                             << "\" attribute to be wave symbol attributes";
   }
 
   mlir::Type elementType = mlir::IndexType::get(op->getContext());

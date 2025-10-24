@@ -15,6 +15,7 @@
 #include "nanobind/nanobind.h"
 
 #include "mlir/CAPI/Support.h"
+#include <cstdint>
 
 namespace nb = nanobind;
 
@@ -39,15 +40,17 @@ NB_MODULE(_waterDialects, m) {
       mlirWaveSymbolAttrGetTypeID)
       .def_classmethod(
           "get",
-          [](const nb::object &cls, const std::string &symbolName,
+          [](const nb::object &cls, wave::WaveIndexSymbol kind,
+             const std::string &symbolName,
              // MlirContext should always come last to allow for being
              // automatically deduced from context.
              MlirContext context) {
             MlirStringRef symbolNameStrRef =
                 mlirStringRefCreate(symbolName.data(), symbolName.size());
-            return cls(mlirWaveSymbolAttrGet(context, symbolNameStrRef));
+            return cls(mlirWaveSymbolAttrGet(
+                context, static_cast<uint32_t>(kind), symbolNameStrRef));
           },
-          nb::arg("cls"), nb::arg("symbolName"),
+          nb::arg("cls"), nb::arg("kind"), nb::arg("symbolName"),
           nb::arg("context") = nb::none(),
           "Gets a wave.WaveSymbolAttr from parameters.");
 
@@ -60,22 +63,11 @@ NB_MODULE(_waterDialects, m) {
       mlirWaveIndexMappingAttrGetTypeID)
       .def_classmethod(
           "get",
-          [](const nb::object &cls, const std::vector<std::string> &symbolNames,
+          [](const nb::object &cls, std::vector<MlirAttribute> symbolAttrs,
              MlirAffineMap start, MlirAffineMap step, MlirAffineMap stride,
              // MlirContext should always come last to allow for being
              // automatically deduced from context.
              MlirContext context) {
-            std::vector<MlirAttribute> symbolAttrs;
-            symbolAttrs.reserve(symbolNames.size());
-
-            for (const std::string &symbolName : symbolNames) {
-              MlirStringRef symbolNameStrRef =
-                  mlirStringRefCreate(symbolName.data(), symbolName.size());
-              MlirAttribute symbolAttr =
-                  mlirWaveSymbolAttrGet(context, symbolNameStrRef);
-              symbolAttrs.push_back(symbolAttr);
-            }
-
             intptr_t numSymbols = symbolAttrs.size();
             intptr_t numResults = mlirAffineMapGetNumResults(start);
             for (MlirAffineMap map : {start, step, stride}) {
@@ -189,19 +181,9 @@ NB_MODULE(_waterDialects, m) {
       mlirWaveExprAttrGetTypeID)
       .def_classmethod(
           "get",
-          [](const nb::object &cls, const std::vector<std::string> &symbolNames,
+          [](const nb::object &cls, std::vector<MlirAttribute> symbolAttrs,
              MlirAffineMap map) {
-            std::vector<MlirAttribute> symbolAttrs;
-            intptr_t numSymbols = symbolNames.size();
-            symbolAttrs.reserve(numSymbols);
-
-            for (const std::string &symbolName : symbolNames) {
-              MlirStringRef symbolNameStrRef =
-                  mlirStringRefCreate(symbolName.data(), symbolName.size());
-              MlirAttribute symbolAttr = mlirWaveSymbolAttrGet(
-                  mlirAffineMapGetContext(map), symbolNameStrRef);
-              symbolAttrs.push_back(symbolAttr);
-            }
+            intptr_t numSymbols = symbolAttrs.size();
 
             if (numSymbols != mlirAffineMapGetNumSymbols(map)) {
               throw nb::value_error("Expected symbol_names to have as many "

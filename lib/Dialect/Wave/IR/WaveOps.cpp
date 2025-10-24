@@ -67,19 +67,16 @@ static void printRegisterOpTypes(mlir::OpAsmPrinter &printer, mlir::Operation *,
 // Parse an @-symbol and interpret it as a wave symbol.
 static mlir::ParseResult parseSingleSymbol(mlir::OpAsmParser &parser,
                                            wave::WaveSymbolAttr &symbolAttr) {
-  mlir::StringAttr strAttr;
-  if (mlir::failed(parser.parseSymbolName(strAttr)))
-    return mlir::failure();
+  if (parser.parseCustomAttributeWithFallback(symbolAttr))
+    return {};
 
-  symbolAttr =
-      wave::WaveSymbolAttr::get(parser.getContext(), strAttr.getValue());
   return mlir::success();
 }
 
 // Print a wave symbol as an MLIR @-symbol.
 static void printSingleSymbol(mlir::OpAsmPrinter &printer, mlir::Operation *,
                               wave::WaveSymbolAttr symbolAttr) {
-  printer.printSymbolName(symbolAttr.getName());
+  symbolAttr.print(printer);
 }
 
 #define GET_OP_CLASSES
